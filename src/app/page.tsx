@@ -104,6 +104,10 @@ function FeedbackPanel({ feedback, onNext }: { feedback: EvaluationResponse; onN
   }
   const info = status[feedback.status]
   const StatusIcon = info.icon
+  // Ignore cosmetic differences that do not make the French more natural.
+  const normalized = (value: string) => value.normalize('NFC')
+    .replace(/\s+/g, ' ').trim().replace(/[.!?…]+$/u, '').trim().toLocaleLowerCase('fr')
+  const hasDistinctAlternative = normalized(feedback.corrected_sentence) !== normalized(feedback.natural_alternative)
   return <section className="animate-pop-in mt-7 space-y-5 border-t border-slate-100 pt-7" aria-live="polite">
     <div className={cn('flex items-center justify-between gap-3 rounded-2xl border p-4', info.cls)}>
       <div className="flex items-center gap-3"><StatusIcon size={22} /><span className="font-bold">{info.label}</span></div>
@@ -116,15 +120,22 @@ function FeedbackPanel({ feedback, onNext }: { feedback: EvaluationResponse; onN
         <SpeakButton text={feedback.corrected_sentence} />
       </div>
     </div>
-    <div className="rounded-2xl border border-indigo-100 bg-indigo-50/60 p-4 sm:p-5">
-      <div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-indigo-600">
-        <Sparkles size={14} /> Alternativa natural
+    {hasDistinctAlternative ? (
+      <div className="rounded-2xl border border-indigo-100 bg-indigo-50/60 p-4 sm:p-5">
+        <div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-indigo-600">
+          <Sparkles size={14} /> Alternativa natural
+        </div>
+        <div className="flex items-start justify-between gap-3">
+          <p className="lesson-text text-[19px] leading-relaxed text-slate-900 sm:text-[22px]">{feedback.natural_alternative}</p>
+          <SpeakButton text={feedback.natural_alternative} />
+        </div>
       </div>
-      <div className="flex items-start justify-between gap-3">
-        <p className="lesson-text text-[19px] leading-relaxed text-slate-900 sm:text-[22px]">{feedback.natural_alternative}</p>
-        <SpeakButton text={feedback.natural_alternative} />
+    ) : (
+      <div className="flex items-start gap-2 rounded-2xl border border-indigo-100 bg-indigo-50/60 px-4 py-3 text-sm leading-relaxed text-indigo-700">
+        <Sparkles size={17} className="mt-0.5 shrink-0" />
+        <span>La frase corregida ya suena natural en francés. No necesita otra reformulación.</span>
       </div>
-    </div>
+    )}
     <div className="flex items-start gap-3 rounded-2xl bg-white p-1">
       <Lightbulb size={20} className="mt-1 shrink-0 text-amber-500" />
       <div><h3 className="mb-1 font-bold text-slate-900">Explicación gramatical</h3>
