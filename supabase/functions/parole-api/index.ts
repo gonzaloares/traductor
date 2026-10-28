@@ -130,8 +130,32 @@ async function openAI(system: string, input: unknown, temperature: number): Prom
   })
   const data: unknown = await response.json().catch(() => null)
   if (!response.ok) {
-    console.error('OpenAI request failed:', response.status)
-    throw new Error('Error en el servicio de corrección por IA')
+    const errorInfo = data && typeof data === 'object' && 'error' in data &&
+      (data as { error: unknown }).error && typeof (data as { error: unknown }).error === 'object'
+      ? (data as { error: Record<string, unknown> }).error : {}
+    const errorCode = typeof errorInfo.code === 'string' ? errorInfo.code : ''
+    const errorType = typeof errorInfo.type === 'string' ? errorInfo.type : ''
+    // Avoid logging the API key, user's answer or the raw third-party response.
+    console.error('OpenAI request failed:', response.status, errorCode, errorType)
+
+    if (response.status === 429) {
+      const quotaCodes = [
+        'insufficient_quota', 'credit_balance_exhausted',
+        'organization_usage_limit_exceeded', 'organization_spend_limit_exceeded',
+        'project_spend_limit_exceeded', 'billing_hard_limit_reached'
+      ]
+      if (quotaCodes.includes(errorCode) || quotaCodes.includes(errorType)) {
+        throw new Error('Sin saldo o límite de gasto alcanzado en OpenAI API. Revisa la facturación y los límites de tu proyecto en platform.openai.com.')
+      }
+      throw new Error('OpenAI ha limitado temporalmente las solicitudes (429). Vuelve a intentarlo después de unos minutos y revisa los límites de tu proyecto API.')
+    }
+    if (response.status === 401) {
+      throw new Error('La clave OPENAI_API_KEY no es válida o ha caducado. Revisa los secretos de Supabase.')
+    }
+    if (response.status === 403) {
+      throw new Error('El proyecto de OpenAI no tiene permiso para utilizar el modelo. Revisa su configuración.')
+    }
+    throw new Error('OpenAI ha rechazado la solicitud (' + response.status + '). Revisa el estado de tu cuenta API.')
   }
   const raw = data && typeof data === 'object' && 'choices' in data
     ? (data as { choices?: { message?: { content?: string | null } }[] }).choices?.[0]?.message?.content
@@ -290,8 +314,12 @@ Deno.serve(async (request: Request): Promise<Response> => {
     return reply(request, { error: 'Método no permitido' }, 405)
   } catch (error) {
     console.error('Parole Edge Function error:', error instanceof Error ? error.message : 'unknown')
-    return reply(request, { error: error instanceof Error && /Falta secreto/.test(error.message)
-      ? 'Falta una variable privada en Supabase Edge Functions > Secrets'
-      : 'No se ha podido completar la operación. Comprueba la configuración del servidor.' }, 500)
+    const message = error instanceof Error ? error.message : ''
+    const isOpenAIIssue = /^(Sin saldo o límite de gasto|OpenAI ha limitado temporalmente|La clave OPENAI_API_KEY|El proyecto de OpenAI|OpenAI ha rechazado)/.test(message)
+    const publicMessage = isOpenAIIssue ? message
+      : /Falta secreto/.test(message)
+      ? 'Falta una variable privada en Supabase Edge Functions > Secrets.'
+      : 'No se ha podido completar la operación. Comprueba la configuración del servidor.'
+    return reply(request, { error: publicMessage }, isOpenAIIssue ? 502 : 500)
   }
 })
