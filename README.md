@@ -2,6 +2,24 @@
 
 **Parole** es una aplicación de traducción activa español → francés para niveles A1, A2, B1 y B2. Sus datos se sincronizan en Supabase mediante un algoritmo de repetición espaciada (SRS). La corrección de las respuestas y la generación de nuevas frases se realizan con **OpenAI `gpt-4o-mini`**.
 
+## Instalar Parole como aplicación (PWA)
+
+Parole está preparada como una **PWA** instalable en Android, iPhone/iPad y escritorio, servida directamente desde GitHub Pages en `https://gonzaloares.github.io/traductor/`.
+
+- **Android (Chrome):** abre la página, pulsa el menú de tres puntos y selecciona **Instalar aplicación** o **Añadir a pantalla de inicio**.
+- **iPhone/iPad (Safari):** abre la página, pulsa **Compartir** y selecciona **Añadir a pantalla de inicio** y confirma la opción de abrir como aplicación si aparece.
+- **Ordenador (Chrome/Edge):** abre Parole y utiliza la opción **Instalar** del menú o del navegador.
+
+El icono abre Parole en una ventana independiente, sin barra de navegación. No se necesita publicar en tiendas ni cambiar de hosting. El manifiesto y el service worker usan la ruta de GitHub Pages `/traductor/`.
+
+### Comportamiento sin conexión y privacidad
+
+El service worker guarda únicamente archivos públicos de la interfaz (HTML, scripts, estilos e iconos), versionados por despliegue. La aplicación podrá abrir su interfaz sin conexión una vez se haya cargado y almacenado correctamente, pero el **inicio de sesión, banco de frases, correcciones con IA, generación y sincronización necesitan Internet**. No se guardan respuestas de Supabase, fichas personales ni resultados de OpenAI en la caché del service worker. Las sesiones siguen gestionándose en el navegador como antes; el PIN no se almacena.
+
+Para crear los iconos (PNG 192/512, variante maskable y Apple 180), el build ejecuta `node scripts/generate-pwa-icons.mjs` sin dependencias adicionales. Tras `next build`, `scripts/finalize-pwa.mjs` genera una caché de recursos inmutables con el identificador de compilación y valida la salida estática. El navegador comprueba las actualizaciones del service worker al abrir la aplicación.
+
+---
+
 ## Dónde se ejecuta
 
 - **Interfaz web:** [GitHub Pages](https://gonzaloares.github.io/traductor/), desplegada desde `main` usando `.github/workflows/pages.yml` (exportación estática Next.js).
