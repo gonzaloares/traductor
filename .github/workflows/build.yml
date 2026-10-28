@@ -11,14 +11,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: npm install --no-audit --no-fund
-      - name: Export generated lockfile (temporary)
-        run: |
-          node - <<'NODE'
-          const content = require('node:fs').readFileSync('package-lock.json', 'utf8')
-          for (let i = 0; i < content.length; i += 900) {
-            console.log('LOCKPART:' + Math.floor(i / 900) + ':' + JSON.stringify(content.slice(i, i + 900)))
-          }
-          NODE
+          cache: npm
+      - run: npm ci --no-audit --no-fund
       - run: npm run typecheck
       - run: npm run build
