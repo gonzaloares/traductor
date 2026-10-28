@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { EvaluationResponse, Level, Sentence, Status } from '@/lib/types'
+import { compareTranslations, type DiffPart } from '@/lib/translation-diff'
 
 type View = 'practice' | 'bank'
 type Filter = Level | 'Todos'
@@ -96,7 +97,23 @@ function SpeakButton({ text }: { text: string }) {
     <Volume2 size={19} />
   </button>
 }
-function FeedbackPanel({ feedback, onNext }: { feedback: EvaluationResponse; onNext: () => void }) {
+function ComparisonText({ parts, side }: { parts: DiffPart[]; side: 'original' | 'corrected' }) {
+  return <span className="whitespace-pre-wrap break-words">
+    {parts.map((part, index) => part.kind === 'unchanged' ?
+      <span key={index}>{part.text}</span> :
+      <mark key={index} title={side === 'original' ? 'Fragmento que hay que corregir' : 'Fragmento corregido'}
+        className={cn('rounded-[4px] px-0.5 py-0.5 font-bold box-decoration-clone',
+          side === 'original'
+            ? 'bg-rose-100 text-rose-800 underline decoration-rose-500 decoration-2 underline-offset-4'
+            : 'bg-emerald-100 text-emerald-900 underline decoration-emerald-600 decoration-2 underline-offset-4')}>
+        {part.text}
+      </mark>)}
+  </span>
+}
+
+function FeedbackPanel({ feedback, userAnswer, onNext }: {
+  feedback: EvaluationResponse; userAnswer: string; onNext: () => void
+}) {
   const status: Record<Status, { label: string; cls: string; icon: typeof CheckCircle2 }> = {
     perfect: { label: '¡Perfecto!', cls: 'bg-emerald-50 text-emerald-800 border-emerald-200', icon: CheckCircle2 },
     minor_errors: { label: '¡Casi perfecto!', cls: 'bg-amber-50 text-amber-800 border-amber-200', icon: AlertTriangle },
@@ -104,6 +121,8 @@ function FeedbackPanel({ feedback, onNext }: { feedback: EvaluationResponse; onN
   }
   const info = status[feedback.status]
   const StatusIcon = info.icon
+  const comparison = compareTranslations(userAnswer, feedback.corrected_sentence)
+  const changeHighlights = comparison.changes.filter(change => change.before.trim() || change.after.trim())
   // Ignore cosmetic differences that do not make the French more natural.
   const normalized = (value: string) => value.normalize('NFC')
     .replace(/\s+/g, ' ').trim().replace(/[.!?…]+$/u, '').trim().toLocaleLowerCase('fr')
@@ -114,11 +133,50 @@ function FeedbackPanel({ feedback, onNext }: { feedback: EvaluationResponse; onN
       <span className="text-lg font-extrabold tabular">{feedback.score}/100</span>
     </div>
     <div className="rounded-2xl border border-slate-100 bg-slate-50/75 p-4 sm:p-5">
-      <div className="mb-2 text-xs font-bold uppercase tracking-widest text-slate-500">Tu frase corregida</div>
-      <div className="flex items-start justify-between gap-3">
-        <p className="lesson-text text-[19px] leading-relaxed text-slate-900 sm:text-[22px]">{feedback.corrected_sentence}</p>
-        <SpeakButton text={feedback.corrected_sentence} />
+      <h3 className="mb-4 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-600">
+        <Search size={16} className="text-indigo-500" /> Compara las diferencias
+      </h3>
+      <div className="space-y-4">
+        <div>
+          <div className="mb-1.5 flex items-center gap-2 text-xs font-semibold text-rose-800">
+            <span className="h-2.5 w-2.5 rounded-sm bg-rose-300" /> Lo que escribiste
+          </div>
+          <p className="lesson-text text-[19px] leading-relaxed text-slate-900 sm:text-[22px]">
+            <ComparisonText parts={comparison.original} side="original" />
+          </p>
+        </div>
+        <div className="border-t border-slate-200 pt-4">
+          <div className="mb-1.5 flex items-center gap-2 text-xs font-semibold text-emerald-800">
+            <span className="h-2.5 w-2.5 rounded-sm bg-emerald-400" /> Tu frase corregida
+          </div>
+          <div className="flex items-start justify-between gap-3">
+            <p className="lesson-text text-[19px] leading-relaxed text-slate-900 sm:text-[22px]">
+              <ComparisonText parts={comparison.corrected} side="corrected" />
+            </p>
+            <SpeakButton text={feedback.corrected_sentence} />
+          </div>
+        </div>
       </div>
+      {changeHighlights.length > 0 ? <div className="mt-5 rounded-xl border border-slate-200 bg-white px-3 py-3">
+        <div className="mb-2 text-[11px] font-bold uppercase tracking-widest text-slate-500">Cambios detectados</div>
+        <div className="flex flex-wrap gap-2">
+          {changeHighlights.slice(0, 5).map((change, index) =>
+            <span key={index} className="inline-flex max-w-full flex-wrap items-center gap-2 rounded-lg border border-slate-100 px-2.5 py-2 text-sm">
+              <span className="break-all font-semibold text-rose-700 line-through decoration-rose-500">
+                {change.before.trim() || '∅'}
+              </span>
+              <ArrowRight size={15} className="shrink-0 text-slate-400" />
+              <span className="break-all font-bold text-emerald-700">{change.after.trim() || '∅'}</span>
+            </span>)}
+          {changeHighlights.length > 5 &&
+            <span className="self-center text-xs text-slate-500">Y {changeHighlights.length - 5} cambios más</span>}
+        </div>
+        <p className="mt-2 text-xs text-slate-400">Rojo: tu versión · Verde: propuesta de corrección. ∅ significa que se ha añadido o eliminado algo.</p>
+      </div> : <p className="mt-4 rounded-lg bg-indigo-50 px-3 py-2 text-sm text-indigo-700">
+        {feedback.status === 'perfect'
+          ? 'Tu frase coincide con la corrección. ¡Muy bien!'
+          : 'No hay cambios escritos entre tu respuesta y la propuesta. Revisa la explicación: podría tratarse de un matiz de significado o de una evaluación incorrecta.'}
+      </p>}
     </div>
     {hasDistinctAlternative ? (
       <div className="rounded-2xl border border-indigo-100 bg-indigo-50/60 p-4 sm:p-5">
@@ -445,7 +503,7 @@ export default function Page() {
               </button>
             </div>}
           </div>
-          {feedback && <FeedbackPanel feedback={feedback} onNext={next} />}
+          {feedback && <FeedbackPanel feedback={feedback} userAnswer={answer} onNext={next} />}
         </> : <div className="flex min-h-[380px] flex-col items-center justify-center text-center">
           <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600"><CheckCircle2 size={33} /></div>
           <h2 className="text-2xl font-extrabold text-slate-900">¡Todo al día!</h2>
