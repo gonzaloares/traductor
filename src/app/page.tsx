@@ -8,12 +8,26 @@ import {
   X, XCircle, AlertTriangle, Star, CalendarDays
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { EvaluationResponse, Level, Sentence, Status } from '@/lib/types'
+import { LEVELS, type EvaluationResponse, type Level, type Sentence, type Status } from '@/lib/types'
 import { compareTranslations, type DiffPart } from '@/lib/translation-diff'
 
 type View = 'practice' | 'bank'
 type Filter = Level | 'Todos'
 const CHARACTERS = ['é', 'è', 'ê', 'ë', 'à', 'â', 'ù', 'û', 'ç', 'œ', 'î', 'ï', "'"]
+const A1_TOPICS = [
+  'Présent de être et avoir',
+  'Presente de verbos frecuentes',
+  'Artículos definidos e indefinidos',
+  'Género y plural de sustantivos',
+  'Concordancia de adjetivos',
+  'Negación ne... pas',
+  'Preguntas básicas: où, comment, combien',
+  'Pronombres personales y posesivos',
+  'Preposiciones de lugar',
+  'Futuro próximo: aller + infinitivo',
+  'Rutinas diarias y horas',
+  'Expresiones cotidianas'
+]
 const TOPICS = [
   'Passé composé vs imparfait', 'Verbos pronominales', 'Pronombres EN e Y',
   'Pronombres COD y COI', 'Negación compleja', 'Subjuntivo',
@@ -67,7 +81,8 @@ function whenReview(date: string, now: number): string {
   return readableDate(date)
 }
 function levelStyle(level: Level): string {
-  return level === 'A2' ? 'bg-sky-50 text-sky-700 border-sky-100'
+  return level === 'A1' ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
+    : level === 'A2' ? 'bg-sky-50 text-sky-700 border-sky-100'
     : level === 'B1' ? 'bg-amber-50 text-amber-700 border-amber-100'
       : 'bg-violet-50 text-violet-700 border-violet-100'
 }
@@ -247,8 +262,8 @@ export default function Page() {
   const [submitting, setSubmitting] = useState(false)
   const [search, setSearch] = useState('')
   const [generatorOpen, setGeneratorOpen] = useState(false)
-  const [genLevel, setGenLevel] = useState<Level>('B1')
-  const [genTopic, setGenTopic] = useState(TOPICS[0])
+  const [genLevel, setGenLevel] = useState<Level>('A1')
+  const [genTopic, setGenTopic] = useState(A1_TOPICS[0])
   const [genCount, setGenCount] = useState(5)
   const [generating, setGenerating] = useState(false)
   const [notice, setNotice] = useState('')
@@ -390,7 +405,7 @@ export default function Page() {
       <div className="flex items-center gap-3">
         <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-indigo-600 text-xl font-black text-white shadow-md shadow-indigo-200">P<span className="text-amber-300">.</span></div>
         <div><div className="text-[22px] font-extrabold tracking-tight text-slate-900">parole<span className="text-indigo-600">.</span></div>
-          <p className="text-[11px] font-medium tracking-wide text-slate-400">FRANCÉS ACTIVO · A2—B2</p></div>
+          <p className="text-[11px] font-medium tracking-wide text-slate-400">FRANCÉS ACTIVO · A1—B2</p></div>
       </div>
       <button type="button" onClick={() => { setGeneratorOpen(true); setNotice('') }}
         className="flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-3 text-sm font-bold text-white shadow-lg shadow-indigo-100 transition hover:bg-indigo-700 sm:px-5">
@@ -412,7 +427,7 @@ export default function Page() {
         <label htmlFor="level-filter" className="text-sm font-semibold text-slate-500">Nivel</label>
         <select id="level-filter" value={level} onChange={e => changeLevel(e.target.value as Filter)}
           className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-800 shadow-sm">
-          {(['Todos', 'A2', 'B1', 'B2'] as const).map(v => <option key={v} value={v}>{v}</option>)}
+          {(['Todos', ...LEVELS] as const).map(v => <option key={v} value={v}>{v}</option>)}
         </select>
         <button type="button" onClick={() => void load()} disabled={loading} aria-label="Sincronizar" title="Sincronizar con la nube"
           className="rounded-xl border border-slate-200 bg-white p-2.5 text-slate-500 hover:text-indigo-600">
@@ -593,15 +608,15 @@ export default function Page() {
         <p className="mt-2 text-sm leading-relaxed text-slate-500">Amplía tu banco con frases adaptadas al nivel y a la gramática que quieres reforzar.</p>
         <form onSubmit={generate} className="mt-7 space-y-5">
           <div><label htmlFor="gen-level" className="mb-2 block text-sm font-bold text-slate-700">Nivel</label>
-            <div className="grid grid-cols-3 gap-2">{(['A2', 'B1', 'B2'] as const).map(v =>
-              <button type="button" key={v} onClick={() => setGenLevel(v)}
+            <div className="grid grid-cols-4 gap-2">{LEVELS.map(v =>
+              <button type="button" key={v} onClick={() => { setGenLevel(v); setGenTopic(v === 'A1' ? A1_TOPICS[0] : TOPICS[0]) }}
                 className={cn('rounded-xl border-2 py-3 text-sm font-extrabold',
                   genLevel === v ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-slate-100 text-slate-500')}>{v}</button>)}</div>
           </div>
           <div><label htmlFor="gen-topic" className="mb-2 block text-sm font-bold text-slate-700">Tema gramatical</label>
             <input id="gen-topic" list="topics" value={genTopic} onChange={e => setGenTopic(e.target.value)}
               maxLength={100} required className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-indigo-500 focus:outline-none" />
-            <datalist id="topics">{TOPICS.map(topic => <option key={topic} value={topic}/>)}</datalist>
+            <datalist id="topics">{(genLevel === 'A1' ? A1_TOPICS : TOPICS).map(topic => <option key={topic} value={topic}/>)}</datalist>
           </div>
           <div><label htmlFor="gen-count" className="mb-2 block text-sm font-bold text-slate-700">Cantidad de frases</label>
             <select id="gen-count" value={genCount} onChange={e => setGenCount(Number(e.target.value))}
