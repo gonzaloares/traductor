@@ -13,5 +13,6 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci --no-audit --no-fund
+      - run: node --experimental-strip-types --test src/lib/translation-diff.test.mjs
       - run: npm run typecheck
       - run: npm run build
