@@ -1,5 +1,7 @@
 -- Run against a dedicated Supabase project (do not reuse LexiTrack's database).
--- WARNING: open RLS allows anyone who obtains the URL and anon key to read/change data.
+-- Restricted RLS: browser clients MUST NOT read/write data via PostgREST.
+-- Only the Supabase Edge Function, using its private service-role credential,
+-- may access the table after verifying a signed Parole session.
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 CREATE TABLE IF NOT EXISTS public.sentences (
@@ -18,11 +20,8 @@ CREATE TABLE IF NOT EXISTS public.sentences (
 
 ALTER TABLE public.sentences ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "single_user_open_access" ON public.sentences;
-CREATE POLICY "single_user_open_access" ON public.sentences
-  FOR ALL TO anon, authenticated
-  USING (true) WITH CHECK (true);
-
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.sentences TO anon, authenticated;
+-- No anon/authenticated RLS policies are intentionally created.
+REVOKE ALL ON TABLE public.sentences FROM anon, authenticated;
 CREATE INDEX IF NOT EXISTS sentences_review_index
   ON public.sentences (next_review_at, mastery_score);
 CREATE INDEX IF NOT EXISTS sentences_level_review_index

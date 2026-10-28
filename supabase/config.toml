@@ -1,0 +1,4 @@
+project_id = "wymmmzraxwjgcwivmbse"
+
+[functions.parole-api]
+verify_jwt = false

@@ -20,11 +20,36 @@ const TOPICS = [
   'Pronombres relativos', 'Expresiones de la vida cotidiana'
 ]
 
+const FUNCTION_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
+  ? process.env.NEXT_PUBLIC_SUPABASE_URL + '/functions/v1/parole-api'
+  : ''
+const PUBLIC_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ''
+const SESSION_KEY = 'parole_session_v1'
+
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, { ...init, cache: 'no-store', headers: { 'Content-Type': 'application/json', ...init?.headers } })
+  if (!FUNCTION_URL || !PUBLIC_KEY) {
+    throw new Error('Faltan NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY en la compilación.')
+  }
+  const action = url.replace(/^\/api\//, '')
+  const session = localStorage.getItem(SESSION_KEY) ?? ''
+  const res = await fetch(FUNCTION_URL + '?action=' + encodeURIComponent(action), {
+    ...init,
+    cache: 'no-store',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': PUBLIC_KEY,
+      'x-parole-session': session,
+      ...init?.headers
+    }
+  })
   const json: unknown = await res.json().catch(() => ({}))
   if (!res.ok) {
-    const reason = json && typeof json === 'object' && 'error' in json ? String((json as { error: unknown }).error) : 'Error de conexión'
+    const reason = json && typeof json === 'object' && 'error' in json
+      ? String((json as { error: unknown }).error) : 'Error de conexión'
+    if (res.status === 401 && action !== 'auth') {
+      localStorage.removeItem(SESSION_KEY)
+      window.location.reload()
+    }
     throw new Error(reason)
   }
   return json as T
@@ -130,7 +155,7 @@ function Login({ onLogin, busy, error }: { onLogin: (pin: string) => Promise<voi
           {busy && <Loader2 size={18} className="animate-spin" />} Entrar
         </button>
       </form>
-      <p className="mt-6 flex items-center gap-2 text-xs text-slate-400"><ShieldCheck size={15} /> Sesión guardada en este dispositivo</p>
+      <p className="mt-6 flex items-center gap-2 text-xs text-slate-400"><ShieldCheck size={15} /> Sesión protegida durante 30 días; no se almacena el PIN</p>
     </div>
   </main>
 }
@@ -178,15 +203,7 @@ export default function Page() {
         const result = await api<{ required: boolean; authorized: boolean }>('/api/auth')
         if (!alive) return
         if (result.authorized) setAuthorized(true)
-        else {
-          const saved = localStorage.getItem('traductor_fr_pin')
-          if (saved) {
-            try {
-              await api('/api/auth', { method: 'POST', body: JSON.stringify({ pin: saved }) })
-              if (alive) setAuthorized(true)
-            } catch { localStorage.removeItem('traductor_fr_pin') }
-          }
-        }
+        else localStorage.removeItem(SESSION_KEY)
       } catch (e) { if (alive) setAuthError(e instanceof Error ? e.message : 'Error de acceso') }
       finally { if (alive) setAuthReady(true) }
     }
@@ -203,8 +220,11 @@ export default function Page() {
     setAuthBusy(true)
     setAuthError('')
     try {
-      await api('/api/auth', { method: 'POST', body: JSON.stringify({ pin }) })
-      localStorage.setItem('traductor_fr_pin', pin)
+      const result = await api<{ session: string }>('/api/auth', {
+        method: 'POST', body: JSON.stringify({ pin })
+      })
+      if (!result.session) throw new Error('El servidor no ha creado la sesión')
+      localStorage.setItem(SESSION_KEY, result.session)
       setAuthorized(true)
     } catch (e) { setAuthError(e instanceof Error ? e.message : 'PIN incorrecto') }
     finally { setAuthBusy(false) }
@@ -490,7 +510,7 @@ export default function Page() {
     </section>}
 
     <footer className="mt-10 flex flex-wrap justify-center gap-2 text-center text-xs text-slate-400">
-      <span>Parole · aprende francés con práctica deliberada</span><span>·</span><span>Progreso guardado en Supabase</span>
+      <span>Parole · aprende francés con práctica deliberada</span><span>·</span><span>Progreso sincronizado en Supabase</span>
     </footer>
 
     {generatorOpen && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-[3px]" onMouseDown={e => { if (e.target === e.currentTarget && !generating) setGeneratorOpen(false) }}>
