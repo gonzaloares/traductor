@@ -67,7 +67,7 @@ function base64url(bytes: Uint8Array): string {
     .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
 }
 async function sign(payload: string): Promise<string> {
-  const signature = await crypto.subtle.sign('HMAC', await signingKey(), encoder.encode('parole-session-v1:' + payload))
+  const signature = await crypto.subtle.sign('HMAC', await signingKey(), encoder.encode('parole-session-v1:' + env('PAROLE_PIN') + ':' + payload))
   return base64url(new Uint8Array(signature))
 }
 async function issueSession(): Promise<string> {
