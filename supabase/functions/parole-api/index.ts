@@ -3,7 +3,7 @@
 // Deployment: Supabase Edge Functions, verify_jwt = false.
 // Every data-changing/read route requires a signed session issued after PAROLE_PIN verification.
 
-type Level = 'A2' | 'B1' | 'B2'
+type Level = 'A1' | 'A2' | 'B1' | 'B2'
 type Status = 'perfect' | 'minor_errors' | 'incorrect'
 type Sentence = {
   id: string; spanish_text: string; reference_french: string; level: Level;
@@ -22,7 +22,8 @@ const EVALUATOR_PROMPT = "Eres un profesor nativo de francés experto en enseña
   "- \`score\`: número del 0 al 100.\n" +
   "- \`corrected_sentence\`: la frase del usuario corregida manteniendo sus palabras elegidas en la medida de lo posible.\n" +
   "- \`natural_alternative\`: cómo lo diría un francés nativo hoy en día de forma muy natural.\n" +
-  "- \`grammar_explanation_es\`: explicación breve, didáctica y directa en español de los errores cometidos o de por qué está bien."
+  "- \`grammar_explanation_es\`: explicación breve, didáctica y directa en español de los errores cometidos o de por qué está bien.\\n" +
+  "Prioridad: la frase española completa determina el significado. Conserva expresamente personas, parentescos, lugares, objetos, cantidades y demás información en las dos versiones francesas. Por ejemplo, «a mi hermana» no se puede omitir sustituyéndolo solo por «lui» sin contexto. No dupliques complementos sin una construcción correcta. La traducción de referencia es orientativa y puede contener errores; admite otras traducciones fieles y correctas. Si no existe una reformulación verdaderamente más natural que conserve toda la información, natural_alternative debe coincidir con corrected_sentence. Adapta las explicaciones al nivel indicado, especialmente A1."
 
 function allowedOrigin(origin: string | null): boolean {
   return !origin || origin === 'https://gonzaloares.github.io' ||
@@ -239,14 +240,14 @@ async function evaluate(body: Record<string, unknown>): Promise<Record<string, u
   return { ...evaluation, sentence: update[0] }
 }
 async function generateBatch(body: Record<string, unknown>): Promise<Record<string, unknown>> {
-  if (!['A2','B1','B2'].includes(String(body.level)) ||
+  if (!['A1','A2','B1','B2'].includes(String(body.level)) ||
     typeof body.topic !== 'string' || body.topic.trim().length < 2 || body.topic.length > 100 ||
     typeof body.count !== 'number' || !Number.isInteger(body.count) ||
     body.count < 1 || body.count > 10) {
     return { error: 'Selecciona nivel, tema y entre 1 y 10 frases', statusCode: 400 }
   }
   const response = await openAI(
-    'Eres un profesor de francés que diseña ejercicios de traducción activa del español al francés para hispanohablantes. Devuelve SOLO un objeto JSON con una propiedad "sentences" que sea un array. Cada elemento tendrá exactamente "spanish_text" (español natural), "reference_french" (traducción francesa impecable con acentos), "grammar_topic" (tema gramatical concreto). Las frases deben ser variadas, idiomáticas, no ambiguas, adecuadas al nivel solicitado, gramaticalmente correctas y didácticamente desafiantes. No uses explicaciones ni Markdown. No repitas frases.',
+    'Eres un profesor de francés que diseña ejercicios de traducción activa del español al francés para hispanohablantes. Devuelve SOLO un objeto JSON con una propiedad "sentences" que sea un array. Cada elemento tendrá exactamente "spanish_text" (español natural), "reference_french" (traducción francesa impecable con acentos), "grammar_topic" (tema gramatical concreto). Las frases deben ser variadas, idiomáticas, no ambiguas, adecuadas al nivel solicitado, gramaticalmente correctas y didácticamente desafiantes. Para nivel A1, emplea frases cortas y concretas con vocabulario cotidiano, presente de indicativo, ser/estar/tener, artículos, plural, género, preguntas sencillas, negación y futuro próximo; evita subjuntivo, relativos complejos, oraciones largas y dobles negaciones. Conserva todos los detalles del español en la referencia francesa, sin omitir nombres de personas, parentescos, lugares, objetos, cantidades ni matices. No uses explicaciones ni Markdown. No repitas frases.',
     { level: body.level, topic: body.topic.trim(), count: body.count,
       instruction: 'Crea exactamente ' + body.count + ' frases nuevas para este tema.' }, 0.8)
   const drafts = response.sentences
