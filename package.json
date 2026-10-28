@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "node scripts/generate-pwa-icons.mjs && next build && node scripts/finalize-pwa.mjs",
     "start": "next start",
     "typecheck": "tsc --noEmit"
   },
