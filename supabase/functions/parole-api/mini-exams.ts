@@ -165,5 +165,15 @@ export function createMiniExams(db: Database, openAI: AI, apiKey: () => string) 
       return { error: 'No se ha detectado una respuesta oral.', statusCode: 422 }
     return { transcript: data.text.slice(0, 2500) }
   }
-  return { start, history, finish, transcribe }
+  async function abandon(body: Record<string, unknown>): Promise<Record<string, unknown>> {
+    if (typeof body.examId !== 'string' || !uuid.test(body.examId))
+      return { error: 'Examen inválido.', statusCode: 400 }
+    const updated = await db('mini_exams?id=eq.' + encodeURIComponent(body.examId) + '&state=eq.active&select=id', {
+      method: 'PATCH', headers: { Prefer: 'return=representation' },
+      body: JSON.stringify({ state: 'abandoned' })
+    })
+    if (!Array.isArray(updated)) throw new Error('No se pudo abandonar el examen')
+    return { ok: true }
+  }
+  return { start, history, finish, transcribe, abandon }
 }
