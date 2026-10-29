@@ -5,14 +5,22 @@ import {
   ArrowRight, BookOpen, Check, CheckCircle2, ChevronRight, Clock3, GraduationCap,
   Keyboard, Layers3, Library, Lightbulb, Loader2, LockKeyhole, MessageCircle,
   Plus, RefreshCw, RotateCcw, Search, ShieldCheck, Sparkles, Volume2, WandSparkles,
-  X, XCircle, AlertTriangle, Star, CalendarDays
+  X, XCircle, AlertTriangle, Star, CalendarDays, Home, BarChart3, Bookmark
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { LEVELS, type EvaluationResponse, type Level, type Sentence, type Status } from '@/lib/types'
 import { compareTranslations, type DiffPart } from '@/lib/translation-diff'
 
-type View = 'practice' | 'bank'
+type View = 'home' | 'practice' | 'review' | 'bank' | 'progress'
 type Filter = Level | 'Todos'
+const NAV_ITEMS = [
+  { view: 'home', label: 'Inicio', icon: Home },
+  { view: 'practice', label: 'Practicar', icon: BookOpen },
+  { view: 'review', label: 'Repasar', icon: RotateCcw },
+  { view: 'bank', label: 'Mis frases', icon: Library },
+  { view: 'progress', label: 'Progreso', icon: BarChart3 },
+] as const
+const FAVORITES_KEY = 'parole_favorites_v1'
 const CHARACTERS = ['é', 'è', 'ê', 'ë', 'à', 'â', 'ù', 'û', 'ç', 'œ', 'î', 'ï', "'"]
 const A1_TOPICS = [
   'Présent de être et avoir',
@@ -94,20 +102,21 @@ function Mastery({ score, showLabel = false }: { score: number; showLabel?: bool
     {showLabel && <span className="text-xs font-semibold text-slate-500 tabular">{score}/5</span>}
   </div>
 }
-function SpeakButton({ text }: { text: string }) {
+function SpeakButton({ text, lang = 'fr-FR', label = 'Escuchar en francés' }: { text: string; lang?: string; label?: string }) {
   const speak = () => {
     if (!('speechSynthesis' in window)) return
     const synth = window.speechSynthesis
     synth.cancel()
     const utterance = new SpeechSynthesisUtterance(text)
-    utterance.lang = 'fr-FR'
+    utterance.lang = lang
     utterance.rate = 0.88
-    const voice = synth.getVoices().find(v => v.lang.toLowerCase() === 'fr-fr')
-      ?? synth.getVoices().find(v => v.lang.toLowerCase().startsWith('fr'))
+    const language = lang.toLowerCase()
+    const voice = synth.getVoices().find(v => v.lang.toLowerCase() === language)
+      ?? synth.getVoices().find(v => v.lang.toLowerCase().startsWith(language.slice(0, 2)))
     if (voice) utterance.voice = voice
     synth.speak(utterance)
   }
-  return <button type="button" onClick={speak} title="Escuchar en francés" aria-label={'Escuchar: ' + text}
+  return <button type="button" onClick={speak} title={label} aria-label={label + ': ' + text}
     className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 transition hover:bg-indigo-100">
     <Volume2 size={19} />
   </button>
@@ -126,8 +135,13 @@ function ComparisonText({ parts, side }: { parts: DiffPart[]; side: 'original' |
   </span>
 }
 
-function FeedbackPanel({ feedback, userAnswer, onNext }: {
-  feedback: EvaluationResponse; userAnswer: string; onNext: () => void
+function FeedbackPanel({ feedback, userAnswer, onNext, onRetry, onFavorite, isFavorite }: {
+  feedback: EvaluationResponse
+  userAnswer: string
+  onNext: () => void
+  onRetry: () => void
+  onFavorite: () => void
+  isFavorite: boolean
 }) {
   const status: Record<Status, { label: string; cls: string; icon: typeof CheckCircle2 }> = {
     perfect: { label: '¡Perfecto!', cls: 'bg-emerald-50 text-emerald-800 border-emerald-200', icon: CheckCircle2 },
@@ -146,6 +160,18 @@ function FeedbackPanel({ feedback, userAnswer, onNext }: {
     <div className={cn('flex items-center justify-between gap-3 rounded-2xl border p-4', info.cls)}>
       <div className="flex items-center gap-3"><StatusIcon size={22} /><span className="font-bold">{info.label}</span></div>
       <span className="text-lg font-extrabold tabular">{feedback.score}/100</span>
+    </div>
+    <div className="grid grid-cols-3 gap-2" aria-label="Acciones de la corrección">
+      <button type="button" onClick={onRetry} className="flex min-h-12 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-1 text-xs font-bold text-slate-700 hover:bg-slate-50 sm:text-sm">
+        <RotateCcw size={17} /> Reintentar
+      </button>
+      <button type="button" onClick={onFavorite} aria-pressed={isFavorite} className={cn('flex min-h-12 items-center justify-center gap-1.5 rounded-xl border px-1 text-xs font-bold sm:text-sm',
+        isFavorite ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50')}>
+        <Bookmark size={17} fill={isFavorite ? 'currentColor' : 'none'} /> {isFavorite ? 'Guardada' : 'Guardar'}
+      </button>
+      <button type="button" onClick={onNext} className="flex min-h-12 items-center justify-center gap-1 rounded-xl bg-indigo-600 px-1 text-xs font-bold text-white hover:bg-indigo-700 sm:text-sm">
+        Siguiente <ArrowRight size={17} />
+      </button>
     </div>
     <div className="rounded-2xl border border-slate-100 bg-slate-50/75 p-4 sm:p-5">
       <h3 className="mb-4 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-600">
@@ -246,6 +272,11 @@ function Login({ onLogin, busy, error }: { onLogin: (pin: string) => Promise<voi
 
 export default function Page() {
   const [view, setView] = useState<View>('practice')
+  const [reviewWeak, setReviewWeak] = useState(false)
+  const [reviewSeen, setReviewSeen] = useState<string[]>([])
+  const [favoriteIds, setFavoriteIds] = useState<string[]>([])
+  const [onlyFavorites, setOnlyFavorites] = useState(false)
+  const [showHint, setShowHint] = useState(false)
   const [level, setLevel] = useState<Filter>('Todos')
   const [sentences, setSentences] = useState<Sentence[]>([])
   const [loading, setLoading] = useState(true)
@@ -298,6 +329,12 @@ export default function Page() {
   }, [])
   useEffect(() => { if (authorized) void load() }, [authorized, load])
   useEffect(() => {
+    try {
+      const saved: unknown = JSON.parse(localStorage.getItem(FAVORITES_KEY) ?? '[]')
+      if (Array.isArray(saved)) setFavoriteIds(saved.filter((id): id is string => typeof id === 'string'))
+    } catch { /* The app remains usable if browser storage is unavailable. */ }
+  }, [])
+  useEffect(() => {
     const interval = window.setInterval(() => setNow(Date.now()), 60_000)
     return () => clearInterval(interval)
   }, [])
@@ -343,16 +380,48 @@ export default function Page() {
     return aDue - bDue || a.mastery_score - b.mastery_score
       || new Date(a.next_review_at).getTime() - new Date(b.next_review_at).getTime()
   }), [filtered, now])
+  const reviewCandidates = useMemo(() => filtered.filter(s =>
+    s.times_practiced > 0 && new Date(s.next_review_at).getTime() <= now
+  ).sort((a, b) => a.mastery_score - b.mastery_score), [filtered, now])
+  const weakCandidates = useMemo(() => filtered.filter(s =>
+    s.times_practiced > 0 && s.mastery_score < 4
+  ).sort((a, b) => a.mastery_score - b.mastery_score), [filtered])
+  const reviewPool = (reviewWeak ? weakCandidates : reviewCandidates).filter(s => !reviewSeen.includes(s.id))
   const current = filtered.find(s => s.id === activeId) ??
-    sorted.find(s => new Date(s.next_review_at).getTime() <= now || showUpcoming) ?? null
+    (view === 'review' ? reviewPool[0] ?? null
+      : sorted.find(s => new Date(s.next_review_at).getTime() <= now || showUpcoming) ?? null)
   const bank = useMemo(() => filtered.filter(s =>
+    (!onlyFavorites || favoriteIds.includes(s.id)) &&
     (s.spanish_text + ' ' + s.grammar_topic + ' ' + s.reference_french).toLocaleLowerCase('es')
       .includes(search.toLocaleLowerCase('es'))
   ).sort((a, b) => new Date(a.next_review_at).getTime() - new Date(b.next_review_at).getTime()),
-  [filtered, search])
+  [filtered, search, onlyFavorites, favoriteIds])
+  const practiced = filtered.filter(s => s.times_practiced > 0).length
+  const masteryPercent = practiced ? Math.round(mastered / practiced * 100) : 0
+  const levelStats = LEVELS.map(item => {
+    const items = sentences.filter(s => s.level === item)
+    return { level: item, total: items.length, mastered: items.filter(s => s.mastery_score >= 4).length }
+  })
+
+  const toggleFavorite = (id: string) => {
+    setFavoriteIds(prev => {
+      const updated = prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+      try { localStorage.setItem(FAVORITES_KEY, JSON.stringify(updated)) } catch { /* Optional local favorite. */ }
+      return updated
+    })
+  }
+  const navigate = (target: View) => {
+    if (target === 'review' || (view === 'review' && target === 'practice')) {
+      setActiveId(null); setAnswer(''); setFeedback(null); setShowHint(false); setShowUpcoming(false)
+      setReviewSeen([]); setReviewWeak(false)
+    }
+    setView(target)
+    window.scrollTo({ top: 0, behavior: 'instant' })
+  }
 
   const changeLevel = (value: Filter) => {
     setLevel(value); setActiveId(null); setFeedback(null); setAnswer(''); setShowUpcoming(false)
+    setReviewSeen([]); setShowHint(false)
   }
   const insertCharacter = (char: string) => {
     const target = textareaRef.current
@@ -382,12 +451,19 @@ export default function Page() {
     finally { setSubmitting(false) }
   }
   const next = () => {
-    const options = sorted.filter(s => s.id !== current?.id
-      && (showUpcoming || new Date(s.next_review_at).getTime() <= Date.now()))
+    const options = view === 'review'
+      ? reviewPool.filter(s => s.id !== current?.id)
+      : sorted.filter(s => s.id !== current?.id
+        && (showUpcoming || new Date(s.next_review_at).getTime() <= Date.now()))
+    if (view === 'review' && current) setReviewSeen(prev => [...prev, current.id])
     setActiveId(options[0]?.id ?? null)
-    setAnswer(''); setFeedback(null); setError('')
-    if (options.length === 0) setShowUpcoming(false)
-    textareaRef.current?.focus()
+    setAnswer(''); setFeedback(null); setShowHint(false); setError('')
+    if (options.length === 0 && view !== 'review') setShowUpcoming(false)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+  const retry = () => {
+    setFeedback(null); setAnswer(''); setShowHint(false); setError('')
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
   const keyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
@@ -406,6 +482,7 @@ export default function Page() {
         return [...prev, ...result.sentences.filter(s => !ids.has(s.id))]
       })
       setGeneratorOpen(false); setLevel(genLevel); setView('practice')
+      setReviewWeak(false); setReviewSeen([]); setShowHint(false)
       setActiveId(result.sentences[0]?.id ?? null); setAnswer(''); setFeedback(null)
       setNotice(result.insertedCount + ' frases nuevas añadidas a tu banco.')
       setNow(Date.now())
@@ -414,14 +491,14 @@ export default function Page() {
   }
   const practiceSentence = (id: string) => {
     setView('practice'); setActiveId(id); setShowUpcoming(true)
-    setFeedback(null); setAnswer(''); setError('')
+    setFeedback(null); setAnswer(''); setShowHint(false); setError('')
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   if (!authReady) return <main className="flex min-h-screen items-center justify-center gap-3 text-indigo-600"><Loader2 className="animate-spin" /> Comprobando acceso...</main>
   if (!authorized) return <Login onLogin={login} busy={authBusy} error={authError} />
 
-  return <main className="mx-auto min-h-screen max-w-6xl px-4 pb-20 sm:px-6 lg:px-8">
+  return <main className="mx-auto min-h-screen max-w-6xl px-4 pb-32 sm:px-6 sm:pb-20 lg:px-8">
     <header className="flex items-center justify-between gap-2 border-b border-slate-200/70 py-3 sm:gap-4 sm:py-7">
       <div className="flex min-w-0 items-center gap-2 sm:gap-3">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-indigo-600 sm:h-11 sm:w-11 sm:rounded-2xl text-xl font-black text-white shadow-md shadow-indigo-200">P<span className="text-amber-300">.</span></div>
@@ -440,7 +517,7 @@ export default function Page() {
           <Star size={13} fill="currentColor" /> Un poco cada día, mucho francés
         </div>
         <h1 className="text-[21px] font-extrabold tracking-tight text-slate-900 sm:text-4xl">
-          <span className="sm:hidden">¡A practicar!</span><span className="hidden sm:inline">Bonjour, <span className="text-indigo-600">¡a practicar!</span></span>
+          <span className="sm:hidden">{view === 'home' ? 'Tu inicio' : view === 'practice' ? '¡A practicar!' : view === 'review' ? 'Tus repasos' : view === 'bank' ? 'Mis frases' : 'Tu progreso'}</span><span className="hidden sm:inline">{view === 'practice' ? <>Bonjour, <span className="text-indigo-600">¡a practicar!</span></> : view === 'home' ? 'Tu inicio' : view === 'review' ? 'Repaso espaciado' : view === 'bank' ? 'Mis frases' : 'Tu progreso'}</span>
         </h1>
         <p className="mt-2 hidden text-sm leading-relaxed text-slate-600 sm:block sm:text-base">Traduce, recibe feedback y repasa justo cuando lo necesitas.</p>
       </div>
@@ -457,7 +534,7 @@ export default function Page() {
       </div>
     </div>
 
-    <div className="mt-3 grid grid-cols-3 gap-2 sm:mt-7 sm:gap-5">
+    {view === 'practice' && <div className="mt-3 grid grid-cols-3 gap-2 sm:mt-7 sm:gap-5">
       <div className="soft-shadow rounded-xl border border-slate-100 bg-white p-2.5 sm:rounded-2xl sm:p-5">
         <div className="mb-1 hidden items-center gap-2 text-slate-500 sm:mb-3 sm:flex"><Layers3 size={18} /><span className="hidden text-xs font-semibold sm:inline">Banco personal</span></div>
         <div className="text-[22px] font-extrabold text-slate-900 tabular sm:text-3xl">{filtered.length}</div>
@@ -473,7 +550,7 @@ export default function Page() {
         <div className="text-[22px] font-extrabold text-slate-900 tabular sm:text-3xl">{mastered}</div>
         <div className="mt-0.5 text-[11px] font-semibold leading-tight text-slate-600 sm:mt-1 sm:text-sm">Dominadas (4–5)</div>
       </div>
-    </div>
+    </div>}
 
     {notice && <div className="mt-5 flex items-center justify-between rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800" role="status">
       <span className="flex items-center gap-2"><Check size={17} />{notice}</span>
@@ -483,20 +560,78 @@ export default function Page() {
       <span>{error}</span><button type="button" aria-label="Cerrar error" onClick={() => setError('')}><X size={17}/></button>
     </div>}
 
-    <nav className="mt-4 flex gap-2 border-b border-slate-200 sm:mt-8" aria-label="Secciones">
-      <button type="button" onClick={() => setView('practice')}
-        className={cn('flex items-center gap-2 border-b-[3px] px-3 pb-2 pt-2 text-sm font-bold sm:px-4 sm:pb-3',
-          view === 'practice' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-800')}>
-        <BookOpen size={18} /> Practicar
-      </button>
-      <button type="button" onClick={() => setView('bank')}
-        className={cn('flex items-center gap-2 border-b-[3px] px-3 pb-2 pt-2 text-sm font-bold sm:px-4 sm:pb-3',
-          view === 'bank' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-800')}>
-        <Library size={18} /> Banco de frases
-      </button>
+    <nav className="mt-4 hidden gap-1 border-b border-slate-200 sm:mt-8 sm:flex" aria-label="Secciones">
+      {NAV_ITEMS.map(item => {
+        const Icon = item.icon
+        return <button key={item.view} type="button" onClick={() => navigate(item.view)}
+          aria-current={view === item.view ? 'page' : undefined}
+          className={cn('flex items-center gap-2 border-b-[3px] px-3 pb-3 pt-2 text-sm font-bold',
+            view === item.view ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-800')}>
+          <Icon size={18} /> {item.label}
+        </button>
+      })}
     </nav>
 
-    {view === 'practice' ? <div className="mt-3 grid items-start gap-4 sm:mt-7 lg:grid-cols-[minmax(0,1fr)_290px] lg:gap-6">
+    {view === 'home' ? <section className="mt-5 space-y-5 sm:mt-7">
+      <div className="soft-shadow rounded-[24px] border border-indigo-100 bg-white p-5 sm:p-8">
+        <p className="text-xs font-bold uppercase tracking-widest text-indigo-600">Tu francés, día a día</p>
+        <h2 className="mt-2 text-2xl font-extrabold text-slate-900">¿Qué hacemos hoy?</h2>
+        <p className="mt-2 text-sm text-slate-600">Traduce frases, recupera las que necesitas repasar y consolida tu gramática.</p>
+        <div className="mt-5 grid grid-cols-2 gap-3">
+          <button type="button" onClick={() => navigate('practice')} className="flex min-h-14 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-3 text-sm font-bold text-white"><BookOpen size={19} /> Practicar</button>
+          <button type="button" onClick={() => navigate('review')} className="flex min-h-14 items-center justify-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-3 text-sm font-bold text-indigo-700"><RotateCcw size={19} /> Repasar ({reviewCandidates.length})</button>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {[
+          { label: 'Frases', value: filtered.length },
+          { label: 'Pendientes', value: due.length },
+          { label: 'Practicadas', value: practiced },
+          { label: 'Dominadas', value: mastered }
+        ].map(stat => <div key={stat.label} className="rounded-2xl border border-slate-100 bg-white p-4">
+          <div className="text-2xl font-extrabold tabular text-slate-900">{stat.value}</div>
+          <p className="mt-1 text-xs font-semibold text-slate-500">{stat.label}</p>
+        </div>)}
+      </div>
+      <div className="rounded-2xl border border-slate-100 bg-white p-5">
+        <div className="flex items-center gap-2 font-extrabold text-slate-900"><Star size={19} className="text-amber-500" /> Refuerza tus dificultades</div>
+        <p className="mt-2 text-sm text-slate-600">{weakCandidates.length} frases ya practicadas tienen un dominio inferior a 4/5.</p>
+        <button type="button" onClick={() => { navigate('review'); setReviewWeak(true) }} disabled={weakCandidates.length === 0}
+          className="mt-4 rounded-xl border border-indigo-200 px-4 py-3 text-sm font-bold text-indigo-700 disabled:opacity-40">
+          Practicar mis dificultades <ChevronRight size={17} className="inline" />
+        </button>
+      </div>
+    </section> : view === 'progress' ? <section className="mt-5 space-y-5 sm:mt-7">
+      <div className="soft-shadow rounded-[24px] border border-slate-100 bg-white p-5 sm:p-8">
+        <h2 className="text-xl font-extrabold text-slate-900">Estado de tu aprendizaje</h2>
+        <p className="mt-2 text-sm text-slate-600">Este resumen refleja el dominio actual de las frases, no una tasa histórica de aciertos.</p>
+        <div className="mt-5 grid grid-cols-2 gap-3">
+          <div className="rounded-xl bg-indigo-50 p-4"><div className="text-3xl font-extrabold text-indigo-700">{masteryPercent}%</div><p className="mt-1 text-xs text-slate-600">Dominadas entre las practicadas</p></div>
+          <div className="rounded-xl bg-emerald-50 p-4"><div className="text-3xl font-extrabold text-emerald-700">{filtered.reduce((total, s) => total + s.times_practiced, 0)}</div><p className="mt-1 text-xs text-slate-600">Intentos acumulados</p></div>
+        </div>
+        <div className="mt-6 space-y-5">
+          {levelStats.map(stat => <div key={stat.level}>
+            <div className="mb-2 flex justify-between gap-3 text-sm"><span className="font-bold text-slate-700">Nivel {stat.level}</span><span className="tabular text-slate-500">{stat.mastered} de {stat.total} dominadas</span></div>
+            <div className="h-3 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-indigo-500" style={{ width: stat.total ? (stat.mastered / stat.total * 100) + '%' : '0%' }} /></div>
+          </div>)}
+        </div>
+      </div>
+      <button type="button" onClick={() => navigate('review')} className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 p-4 font-bold text-white">
+        <RotateCcw size={19} /> Repasar frases pendientes
+      </button>
+    </section> : view === 'practice' || view === 'review' ? <div className="mt-3 grid items-start gap-4 sm:mt-7 lg:grid-cols-[minmax(0,1fr)_290px] lg:gap-6">
+      {view === 'review' && <div className="col-span-full flex flex-wrap items-center gap-2 rounded-2xl border border-indigo-100 bg-white p-3">
+        <button type="button" onClick={() => { setReviewWeak(false); setReviewSeen([]); setActiveId(null); setFeedback(null); setAnswer(''); setShowHint(false) }}
+          aria-pressed={!reviewWeak} className={cn('rounded-xl px-3 py-2 text-xs font-bold sm:text-sm', !reviewWeak ? 'bg-indigo-600 text-white' : 'bg-indigo-50 text-indigo-700')}>
+          Pendientes ({reviewCandidates.length})
+        </button>
+        <button type="button" onClick={() => { setReviewWeak(true); setReviewSeen([]); setActiveId(null); setFeedback(null); setAnswer(''); setShowHint(false) }}
+          aria-pressed={reviewWeak} className={cn('rounded-xl px-3 py-2 text-xs font-bold sm:text-sm', reviewWeak ? 'bg-indigo-600 text-white' : 'bg-indigo-50 text-indigo-700')}>
+          Mis dificultades ({weakCandidates.length})
+        </button>
+        <p className="w-full text-xs text-slate-500">Las dificultades incluyen frases practicadas con dominio inferior a 4/5; pueden repasarse antes de tiempo.</p>
+      </div>}
+       <div className="mt-3 grid items-start gap-4 sm:mt-7 lg:grid-cols-[minmax(0,1fr)_290px] lg:gap-6">
       <section className="soft-shadow min-w-0 rounded-[22px] border border-slate-100 bg-white p-4 sm:rounded-[26px] sm:p-8">
         {loading ? <div className="flex min-h-80 items-center justify-center gap-2 text-slate-500"><Loader2 className="animate-spin" /> Cargando frases...</div>
           : current ? <>
@@ -519,6 +654,19 @@ export default function Page() {
             </h2>
           </div>
 
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button type="button" onClick={() => setShowHint(value => !value)} aria-expanded={showHint}
+              className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 text-sm font-bold text-amber-800">
+              <Lightbulb size={17} /> {showHint ? 'Ocultar pista' : 'Pista'}
+            </button>
+            <div className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-indigo-100 bg-indigo-50 px-3 text-sm font-bold text-indigo-700">
+              <SpeakButton text={current.spanish_text} lang="es-ES" label="Escuchar el enunciado en español" />
+              <span className="pr-1">Escuchar</span>
+            </div>
+          </div>
+          {showHint && <p className="mt-3 rounded-xl border border-amber-100 bg-amber-50 p-3 text-sm text-amber-900">
+            <strong>Pista:</strong> {current.grammar_topic}. La traducción comienza por «{current.reference_french.trim().split(/\s+/).slice(0, 2).join(' ')}…».
+          </p>}
           <div className="mt-5 sm:mt-9">
             <label htmlFor="translation" className="mb-2 block text-sm font-bold text-slate-700">Tu traducción</label>
             <textarea id="translation" ref={textareaRef} value={answer} onChange={e => setAnswer(e.target.value)}
@@ -548,15 +696,18 @@ export default function Page() {
               </button>
             </div>}
           </div>
-          {feedback && <FeedbackPanel feedback={feedback} userAnswer={answer} onNext={next} />}
+          {feedback && <FeedbackPanel feedback={feedback} userAnswer={answer} onNext={next}
+            onRetry={retry} onFavorite={() => toggleFavorite(current.id)} isFavorite={favoriteIds.includes(current.id)} />}
         </> : <div className="flex min-h-[380px] flex-col items-center justify-center text-center">
           <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600"><CheckCircle2 size={33} /></div>
           <h2 className="text-2xl font-extrabold text-slate-900">¡Todo al día!</h2>
           <p className="mt-2 max-w-sm leading-relaxed text-slate-500">{filtered.length === 0
             ? 'Todavía no hay frases en este nivel. Genera algunas con IA o cambia de filtro.'
-            : 'No hay frases pendientes de repaso. Puedes practicar por adelantado o volver cuando toque.'}</p>
+            : view === 'review' ? 'No quedan frases para este repaso. Puedes practicar otras o volver cuando toque.' : 'No hay frases pendientes de repaso. Puedes practicar por adelantado o volver cuando toque.'}</p>
           <div className="mt-6 flex flex-wrap justify-center gap-3">
-            {filtered.length > 0 && <button type="button" onClick={() => { setShowUpcoming(true); setActiveId(null) }}
+            {view === 'review' && <button type="button" onClick={() => navigate('practice')}
+              className="rounded-xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white">Ir a practicar</button>}
+            {view === 'practice' && filtered.length > 0 && <button type="button" onClick={() => { setShowUpcoming(true); setActiveId(null) }}
               className="rounded-xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white">Practicar por adelantado</button>}
             <button type="button" onClick={() => setGeneratorOpen(true)}
               className="rounded-xl border border-indigo-200 px-5 py-3 text-sm font-bold text-indigo-600"><Plus size={16} className="mr-1 inline" /> Crear frases</button>
@@ -601,6 +752,11 @@ export default function Page() {
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar frases o temas..."
             aria-label="Buscar frases" className="w-full rounded-xl border border-slate-200 py-3 pl-10 pr-4 text-sm outline-none focus:border-indigo-400"/>
         </div>
+        <button type="button" onClick={() => setOnlyFavorites(value => !value)} aria-pressed={onlyFavorites}
+          className={cn('inline-flex items-center gap-2 rounded-xl border px-3 py-3 text-sm font-bold',
+            onlyFavorites ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-slate-200 bg-white text-slate-600')}>
+          <Bookmark size={17} fill={onlyFavorites ? 'currentColor' : 'none'} /> Solo guardadas ({favoriteIds.filter(id => filtered.some(s => s.id === id)).length})
+        </button>
       </div>
       {loading ? <div className="flex justify-center p-12"><Loader2 className="animate-spin text-indigo-500" /></div> : bank.length === 0
         ? <p className="p-12 text-center text-slate-500">No hay frases que coincidan con la búsqueda.</p>
@@ -617,10 +773,18 @@ export default function Page() {
                 <p className="mt-1 text-sm italic leading-relaxed text-slate-500">{s.reference_french}</p>
                 {s.last_feedback && <p className="mt-2 max-w-2xl rounded-lg bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-500"><Lightbulb size={13} className="mr-1 inline text-amber-500" />{s.last_feedback}</p>}
               </div>
-              <button type="button" onClick={() => practiceSentence(s.id)}
-                className="flex shrink-0 items-center gap-1 rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs font-bold text-indigo-700 hover:bg-indigo-100">
-                Practicar <ChevronRight size={16}/>
-              </button>
+              <div className="flex shrink-0 items-center gap-2">
+                <button type="button" onClick={() => toggleFavorite(s.id)} aria-pressed={favoriteIds.includes(s.id)}
+                  title={favoriteIds.includes(s.id) ? 'Quitar de guardadas' : 'Guardar en este dispositivo'}
+                  className={cn('flex h-10 w-10 items-center justify-center rounded-xl border',
+                    favoriteIds.includes(s.id) ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-slate-200 text-slate-500')}>
+                  <Bookmark size={18} fill={favoriteIds.includes(s.id) ? 'currentColor' : 'none'} />
+                </button>
+                <button type="button" onClick={() => practiceSentence(s.id)}
+                  className="flex shrink-0 items-center gap-1 rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs font-bold text-indigo-700 hover:bg-indigo-100">
+                  Practicar <ChevronRight size={16}/>
+                </button>
+              </div>
             </div>
             <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-3">
               <Mastery score={s.mastery_score} showLabel />
@@ -634,6 +798,22 @@ export default function Page() {
     <footer className="mt-10 flex flex-wrap justify-center gap-2 text-center text-xs text-slate-500">
       <span>Parole · aprende francés con práctica deliberada</span><span>·</span><span>Progreso sincronizado en Supabase</span>
     </footer>
+
+    <nav aria-label="Navegación principal" className={cn('fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 shadow-[0_-6px_24px_rgba(15,23,42,.07)] backdrop-blur sm:hidden', isTyping && 'hidden')}
+      style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+      <div className="mx-auto flex max-w-lg items-stretch justify-around gap-0.5 px-1.5 py-2">
+        {NAV_ITEMS.map(item => {
+          const Icon = item.icon
+          return <button key={item.view} type="button" onClick={() => navigate(item.view)}
+            aria-current={view === item.view ? 'page' : undefined}
+            className={cn('flex min-h-14 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-xl px-0.5 text-[10px] font-bold',
+              view === item.view ? 'bg-indigo-50 text-indigo-700' : 'text-slate-500')}>
+            <Icon size={21} strokeWidth={view === item.view ? 2.5 : 2} aria-hidden="true" />
+            <span className="whitespace-nowrap">{item.label}</span>
+          </button>
+        })}
+      </div>
+    </nav>
 
     {generatorOpen && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-[3px]" onMouseDown={e => { if (e.target === e.currentTarget && !generating) setGeneratorOpen(false) }}>
       <div role="dialog" aria-modal="true" aria-labelledby="generator-title" className="animate-pop-in w-full max-w-lg rounded-[26px] bg-white p-6 shadow-2xl sm:p-8">
