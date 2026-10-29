@@ -619,7 +619,8 @@ export default function Page() {
     if (answer.trim() && !submitting) void correct()
   }
   useEffect(() => {
-    if (!feedback || (view !== 'practice' && view !== 'review')) {
+    if (!feedback || (view !== 'practice' && view !== 'review') ||
+        (view === 'review' && reviewMode === 'orthography')) {
       enterAdvanceLock.current = false
       return
     }
@@ -637,7 +638,7 @@ export default function Page() {
     }
     window.addEventListener('keydown', continueOnEnter)
     return () => window.removeEventListener('keydown', continueOnEnter)
-  }, [feedback, view, next])
+  }, [feedback, view, reviewMode, next])
   const generate = async (event: FormEvent) => {
     event.preventDefault()
     setGenerating(true); setError('')
