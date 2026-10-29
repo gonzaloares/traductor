@@ -699,7 +699,7 @@ export default function Page() {
   if (!authorized) return <Login onLogin={login} busy={authBusy} error={authError} />
 
   return <main className="mx-auto min-h-screen max-w-6xl px-4 pb-32 sm:px-6 sm:pb-20 lg:px-8">
-    <header className="flex items-center justify-between gap-2 border-b border-slate-200/70 py-2.5 sm:py-6">
+    <header className="flex min-h-[70px] items-center justify-between gap-2 border-b border-slate-200/70 py-2.5 sm:h-24 sm:py-0">
       <div className="flex min-w-0 items-center gap-2 sm:gap-3">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-xl font-black text-white shadow-md shadow-indigo-200 sm:h-11 sm:w-11 sm:rounded-2xl">P<span className="text-amber-300">.</span></div>
         <div><div className="text-[19px] font-extrabold tracking-tight text-slate-900 sm:text-[22px]">parole<span className="text-indigo-600">.</span></div>
