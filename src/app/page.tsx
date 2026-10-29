@@ -642,6 +642,60 @@ export default function Page() {
       </div>
     </section> : view === 'progress' ? <section className="mt-5 space-y-5 sm:mt-7">
       <div className="soft-shadow rounded-[24px] border border-slate-100 bg-white p-5 sm:p-8">
+        <h2 className="text-xl font-extrabold text-slate-900">Notas de tus traducciones</h2>
+        <p className="mt-2 text-sm leading-relaxed text-slate-600">
+          La nota media refleja tu primera respuesta a cada ejercicio, sin contar los reintentos inmediatos.
+          {level !== 'Todos' ? ' Estás viendo solo el nivel ' + level + '.' : ' Estás viendo todos los niveles.'}
+        </p>
+        {scoresError && <p className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-800" role="alert">{scoresError}</p>}
+        <div className="mt-5 grid grid-cols-2 gap-3">
+          <div className="rounded-xl bg-indigo-50 p-4">
+            <p className="text-xs font-semibold text-slate-600">Media global</p>
+            <div className="mt-2 text-3xl font-extrabold tabular-nums text-indigo-700">
+              {progress.global ?? '—'}<span className="ml-1 text-sm font-semibold text-indigo-500">{progress.global !== null && '/100'}</span>
+            </div>
+          </div>
+          <div className="rounded-xl bg-emerald-50 p-4">
+            <p className="text-xs font-semibold text-slate-600">Últimas 20 frases</p>
+            <div className="mt-2 text-3xl font-extrabold tabular-nums text-emerald-700">
+              {progress.recent ?? '—'}<span className="ml-1 text-sm font-semibold text-emerald-600">{progress.recent !== null && '/100'}</span>
+            </div>
+            {progress.change !== null &&
+              <p className="mt-2 text-xs font-semibold text-slate-700">
+                {progress.change > 0 ? '+' : ''}{progress.change} puntos frente a las 20 anteriores
+              </p>}
+          </div>
+        </div>
+        {progress.total === 0
+          ? <p className="mt-5 text-sm text-slate-500">Aún no hay notas registradas para este nivel. Las notas anteriores a esta mejora no se pueden recuperar; el seguimiento comienza con tus próximas traducciones.</p>
+          : <div className="mt-6">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <h3 className="text-sm font-extrabold text-slate-800">Evolución de la nota media</h3>
+                <span className="text-xs font-medium text-slate-500">{progress.total} {progress.total === 1 ? 'primera respuesta' : 'primeras respuestas'} registradas</span>
+              </div>
+              <p className="mt-1 text-xs text-slate-500">Cada punto representa hasta 20 frases. Se muestran los últimos 10 bloques.</p>
+              <svg viewBox="0 0 580 185" className="mt-3 w-full" role="img" aria-label="Evolución de la puntuación media por bloques de veinte frases">
+                {[25, 85, 145].map((y, index) => <g key={y}>
+                  <line x1="35" x2="552" y1={y} y2={y} stroke="#e2e8f0" strokeDasharray="3 4" />
+                  <text x="27" y={y + 4} fontSize="11" fill="#64748b" textAnchor="end">{100 - index * 50}</text>
+                </g>)}
+                {progress.blocks.length > 1 && <polyline fill="none" stroke="#4f46e5" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round"
+                  points={progress.blocks.map((block, index) =>
+                    `${35 + index * 517 / (progress.blocks.length - 1)},${145 - block.value * 1.2}`).join(' ')} />}
+                {progress.blocks.map((block, index) => {
+                  const x = progress.blocks.length === 1 ? 294 : 35 + index * 517 / (progress.blocks.length - 1)
+                  const y = 145 - block.value * 1.2
+                  return <g key={block.start}>
+                    <circle cx={x} cy={y} r="5" fill="#4f46e5" stroke="white" strokeWidth="2" />
+                    <text x={x} y={Math.max(13, y - 12)} textAnchor="middle" fontSize="12" fontWeight="700" fill="#4338ca">{block.value}</text>
+                    <text x={x} y="169" textAnchor="middle" fontSize="10" fill="#64748b">{block.end}</text>
+                  </g>
+                })}
+              </svg>
+              <p className="text-center text-xs text-slate-500">Número de respuestas acumuladas</p>
+            </div>}
+      </div>
+      <div className="soft-shadow rounded-[24px] border border-slate-100 bg-white p-5 sm:p-8">
         <h2 className="text-xl font-extrabold text-slate-900">Estado de tu aprendizaje</h2>
         <p className="mt-2 text-sm text-slate-600">Este resumen refleja el dominio actual de las frases, no una tasa histórica de aciertos.</p>
         <div className="mt-5 grid grid-cols-2 gap-3">
