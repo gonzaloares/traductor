@@ -17,6 +17,7 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci --no-audit --no-fund
+      - run: node --experimental-strip-types --test src/lib/grammar-topics.test.mjs
       - run: npm run typecheck
       - run: npm run build
         env:
