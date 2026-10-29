@@ -5,7 +5,8 @@
   --foreground: #152341;
 }
 * { box-sizing: border-box; }
-html { scroll-behavior: smooth; }
+/* Keep centered navigation steady across short and long pages. */
+html { scrollbar-gutter: stable both-edges; }
 body {
   background: var(--background);
   color: var(--foreground);
