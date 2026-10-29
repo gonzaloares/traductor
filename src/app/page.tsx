@@ -8,7 +8,7 @@ import {
   X, XCircle, AlertTriangle, Star, CalendarDays, Home, BarChart3, Bookmark
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { LEVELS, type EvaluationResponse, type Level, type Sentence, type Status } from '@/lib/types'
+import { LEVELS, type EvaluationResponse, type Level, type Sentence, type Status, type PracticeScore } from '@/lib/types'
 import { compareTranslations, type DiffPart } from '@/lib/translation-diff'
 
 type View = 'home' | 'practice' | 'review' | 'bank' | 'progress'
@@ -279,6 +279,8 @@ export default function Page() {
   const [showHint, setShowHint] = useState(false)
   const [level, setLevel] = useState<Filter>('Todos')
   const [sentences, setSentences] = useState<Sentence[]>([])
+  const [scores, setScores] = useState<PracticeScore[]>([])
+  const [scoresError, setScoresError] = useState('')
   const [loading, setLoading] = useState(true)
   const [now, setNow] = useState(() => Date.now())
   const [error, setError] = useState('')
@@ -301,6 +303,7 @@ export default function Page() {
   const [isTyping, setIsTyping] = useState(false)
   const [keyboardInset, setKeyboardInset] = useState(0)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const practiceIdRef = useRef<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -308,6 +311,14 @@ export default function Page() {
       const data = await api<{ sentences: Sentence[] }>('/api/sentences')
       setSentences(data.sentences)
       setError('')
+      try {
+        const history = await api<{ scores: PracticeScore[] }>('/api/scores')
+        setScores(history.scores)
+        setScoresError('')
+      } catch {
+        setScores([])
+        setScoresError('No se ha podido cargar el historial de notas. Vuelve a abrir Parole.')
+      }
       setNow(Date.now())
     } catch (e) { setError(e instanceof Error ? e.message : 'No se pudieron cargar las frases') }
     finally { setLoading(false) }
@@ -403,6 +414,29 @@ export default function Page() {
     return { level: item, total: items.length, mastered: items.filter(s => s.mastery_score >= 4).length }
   })
 
+  // Only the first correction of a practice encounter contributes to the average.
+  // The id survives "Volver a intentar" but is renewed for a new encounter.
+  const progress = useMemo(() => {
+    const history = scores.filter(s => level === 'Todos' || s.level === level)
+      .sort((a, b) => a.created_at.localeCompare(b.created_at) || a.practice_id.localeCompare(b.practice_id))
+    const mean = (items: PracticeScore[]): number | null =>
+      items.length ? Math.round(items.reduce((sum, item) => sum + item.score, 0) / items.length) : null
+    const last = history.slice(-20)
+    const before = history.slice(-40, -20)
+    const blocks: { start: number; end: number; value: number }[] = []
+    for (let i = 0; i < history.length; i += 20) {
+      const group = history.slice(i, i + 20)
+      blocks.push({ start: i + 1, end: i + group.length, value: mean(group) ?? 0 })
+    }
+    return {
+      total: history.length,
+      global: mean(history),
+      recent: mean(last),
+      change: last.length === 20 && before.length === 20 ? (mean(last) ?? 0) - (mean(before) ?? 0) : null,
+      blocks: blocks.slice(-10)
+    }
+  }, [scores, level])
+
   const toggleFavorite = (id: string) => {
     setFavoriteIds(prev => {
       const updated = prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
@@ -411,6 +445,7 @@ export default function Page() {
     })
   }
   const navigate = (target: View) => {
+    practiceIdRef.current = null
     if (target === 'review' || (view === 'review' && target === 'practice')) {
       setActiveId(null); setAnswer(''); setFeedback(null); setShowHint(false); setShowUpcoming(false)
       setReviewSeen([]); setReviewWeak(false)
@@ -420,6 +455,7 @@ export default function Page() {
   }
 
   const changeLevel = (value: Filter) => {
+    practiceIdRef.current = null
     setLevel(value); setActiveId(null); setFeedback(null); setAnswer(''); setShowUpcoming(false)
     setReviewSeen([]); setShowHint(false)
   }
@@ -434,6 +470,7 @@ export default function Page() {
   }
   const correct = async () => {
     if (!current || !answer.trim() || submitting || feedback) return
+    if (!practiceIdRef.current) practiceIdRef.current = crypto.randomUUID()
     textareaRef.current?.blur()
     setIsTyping(false)
     setSubmitting(true); setError(''); setActiveId(current.id)
@@ -443,16 +480,22 @@ export default function Page() {
         body: JSON.stringify({
           sentenceId: current.id, spanishText: current.spanish_text,
           referenceFrench: current.reference_french, level: current.level,
-          grammarTopic: current.grammar_topic, userAnswer: answer
+          grammarTopic: current.grammar_topic, userAnswer: answer,
+          practiceId: practiceIdRef.current
         })
       })
       setFeedback(result)
       setSentences(previous => previous.map(s => s.id === result.sentence.id ? result.sentence : s))
+      if (result.scoreRecord) {
+        setScores(previous => previous.some(s => s.practice_id === result.scoreRecord?.practice_id)
+          ? previous : [...previous, result.scoreRecord!])
+      }
       setNow(Date.now())
     } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo corregir') }
     finally { setSubmitting(false) }
   }
   const next = () => {
+    practiceIdRef.current = null
     const options = view === 'review'
       ? reviewPool.filter(s => s.id !== current?.id)
       : sorted.filter(s => s.id !== current?.id
@@ -483,6 +526,7 @@ export default function Page() {
         const ids = new Set(prev.map(s => s.id))
         return [...prev, ...result.sentences.filter(s => !ids.has(s.id))]
       })
+      practiceIdRef.current = null
       setGeneratorOpen(false); setLevel(genLevel); setView('practice')
       setReviewWeak(false); setReviewSeen([]); setShowHint(false)
       setActiveId(result.sentences[0]?.id ?? null); setAnswer(''); setFeedback(null)
@@ -492,6 +536,7 @@ export default function Page() {
     finally { setGenerating(false) }
   }
   const practiceSentence = (id: string) => {
+    practiceIdRef.current = null
     setView('practice'); setActiveId(id); setShowUpcoming(true)
     setFeedback(null); setAnswer(''); setShowHint(false); setError('')
     window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -615,11 +660,11 @@ export default function Page() {
       </button>
     </section> : view === 'practice' || view === 'review' ? <div className="mt-3 grid items-start gap-4 sm:mt-7 lg:grid-cols-[minmax(0,1fr)_290px] lg:gap-6">
       {view === 'review' && <div className="col-span-full flex flex-wrap items-center gap-2 rounded-2xl border border-indigo-100 bg-white p-3">
-        <button type="button" onClick={() => { setReviewWeak(false); setReviewSeen([]); setActiveId(null); setFeedback(null); setAnswer(''); setShowHint(false) }}
+        <button type="button" onClick={() => { practiceIdRef.current = null; setReviewWeak(false); setReviewSeen([]); setActiveId(null); setFeedback(null); setAnswer(''); setShowHint(false) }}
           aria-pressed={!reviewWeak} className={cn('rounded-xl px-3 py-2 text-xs font-bold sm:text-sm', !reviewWeak ? 'bg-indigo-600 text-white' : 'bg-indigo-50 text-indigo-700')}>
           Pendientes ({reviewCandidates.length})
         </button>
-        <button type="button" onClick={() => { setReviewWeak(true); setReviewSeen([]); setActiveId(null); setFeedback(null); setAnswer(''); setShowHint(false) }}
+        <button type="button" onClick={() => { practiceIdRef.current = null; setReviewWeak(true); setReviewSeen([]); setActiveId(null); setFeedback(null); setAnswer(''); setShowHint(false) }}
           aria-pressed={reviewWeak} className={cn('rounded-xl px-3 py-2 text-xs font-bold sm:text-sm', reviewWeak ? 'bg-indigo-600 text-white' : 'bg-indigo-50 text-indigo-700')}>
           Mis dificultades ({weakCandidates.length})
         </button>
