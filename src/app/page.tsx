@@ -675,7 +675,7 @@ export default function Page() {
               onKeyDown={keyDown} onFocus={() => setIsTyping(true)} onBlur={() => setIsTyping(false)}
               rows={3} disabled={submitting} placeholder="Escribe tu traducción en francés..."
               className="block min-h-28 w-full resize-y rounded-2xl border-2 border-slate-200 bg-slate-50/40 p-3.5 text-base leading-relaxed text-slate-900 placeholder:text-slate-500 focus:border-indigo-500 focus:bg-white focus:outline-none sm:min-h-36 sm:p-4 sm:text-lg" />
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-3 sm:mt-6">
+            <div className={cn('mt-3 flex flex-wrap items-center justify-between gap-3 sm:mt-6', isTyping && answer.trim() && 'max-sm:hidden')}>
               <span className="hidden items-center gap-1.5 text-xs text-slate-500 sm:flex"><Keyboard size={16} /> Ctrl/⌘ + Enter para enviar</span>
               <button type="button" disabled={!answer.trim() || submitting} onClick={() => void correct()}
                 className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-8 py-3.5 text-sm font-bold text-white shadow-lg shadow-indigo-100 transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-40 sm:ml-auto sm:w-auto">
