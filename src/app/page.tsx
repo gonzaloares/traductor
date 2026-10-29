@@ -173,6 +173,7 @@ function FeedbackPanel({ feedback, userAnswer, onNext, onRetry, onFavorite, isFa
         Siguiente <ArrowRight size={17} />
       </button>
     </div>
+    <p className="hidden text-center text-xs font-medium text-slate-500 sm:block">Pulsa Enter para pasar a la siguiente frase</p>
     <div className="rounded-2xl border border-slate-100 bg-slate-50/75 p-4 sm:p-5">
       <h3 className="mb-4 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-600">
         <Search size={16} className="text-indigo-500" /> Compara las diferencias
@@ -303,6 +304,7 @@ export default function Page() {
   const [isTyping, setIsTyping] = useState(false)
   const [keyboardInset, setKeyboardInset] = useState(0)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const enterAdvanceLock = useRef(false)
   const practiceIdRef = useRef<string | null>(null)
 
   const load = useCallback(async () => {
@@ -511,10 +513,32 @@ export default function Page() {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
   const keyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
-      event.preventDefault(); void correct()
-    }
+    if (event.key !== 'Enter' || event.repeat || event.nativeEvent.isComposing ||
+        event.nativeEvent.keyCode === 229 || !window.matchMedia('(pointer: fine)').matches) return
+    // On a computer each translation is one sentence: Enter submits rather than inserting a line break.
+    event.preventDefault()
+    if (answer.trim() && !submitting) void correct()
   }
+  useEffect(() => {
+    if (!feedback || (view !== 'practice' && view !== 'review')) {
+      enterAdvanceLock.current = false
+      return
+    }
+    enterAdvanceLock.current = false
+    const continueOnEnter = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== 'Enter' || event.repeat || event.isComposing ||
+          event.keyCode === 229 || event.altKey || event.ctrlKey || event.metaKey ||
+          !window.matchMedia('(pointer: fine)').matches || enterAdvanceLock.current) return
+      // Keep native keyboard activation for buttons and other interactive controls.
+      if (event.target instanceof Element &&
+          event.target.closest('button, input, textarea, select, a, summary, [contenteditable], [role="button"]')) return
+      event.preventDefault()
+      enterAdvanceLock.current = true
+      next()
+    }
+    window.addEventListener('keydown', continueOnEnter)
+    return () => window.removeEventListener('keydown', continueOnEnter)
+  }, [feedback, view, next])
   const generate = async (event: FormEvent) => {
     event.preventDefault()
     setGenerating(true); setError('')
@@ -775,7 +799,7 @@ export default function Page() {
               rows={3} disabled={submitting} placeholder="Escribe tu traducción en francés..."
               className="block min-h-28 w-full resize-y rounded-2xl border-2 border-slate-200 bg-slate-50/40 p-3.5 text-base leading-relaxed text-slate-900 placeholder:text-slate-500 focus:border-indigo-500 focus:bg-white focus:outline-none sm:min-h-36 sm:p-4 sm:text-lg" />
             <div className={cn('mt-3 flex flex-wrap items-center justify-between gap-3 sm:mt-6', isTyping && answer.trim() && 'max-sm:hidden')}>
-              <span className="hidden items-center gap-1.5 text-xs text-slate-500 sm:flex"><Keyboard size={16} /> Ctrl/⌘ + Enter para enviar</span>
+              <span className="hidden items-center gap-1.5 text-xs text-slate-500 sm:flex"><Keyboard size={16} /> Enter para enviar</span>
               <button type="button" disabled={!answer.trim() || submitting} onClick={() => void correct()}
                 className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-8 py-3.5 text-sm font-bold text-white shadow-lg shadow-indigo-100 transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-40 sm:ml-auto sm:w-auto">
                 {submitting ? <Loader2 size={18} className="animate-spin" /> : <ArrowRight size={18} />}
