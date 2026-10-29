@@ -43,3 +43,34 @@ test('highlights a punctuation-only correction', () => {
   assert.equal(result.corrected.map(p => p.text).join(''), 'Tu viens ?')
   assert.ok(result.changes.length > 0)
 })
+
+test('oe is accepted as a keyboard fallback for œ without false change highlights', () => {
+  const before = 'Ma soeur a un grand coeur.'
+  const after = 'Ma sœur a un grand cœur.'
+  const result = compareTranslations(before, after)
+  assert.equal(result.hasChanges, false)
+  assert.deepEqual(result.changes, [])
+  assert.equal(result.original.map(p => p.text).join(''), before)
+  assert.equal(result.corrected.map(p => p.text).join(''), after)
+  assert.deepEqual(result.original.filter(p => p.kind === 'removed'), [])
+  assert.deepEqual(result.corrected.filter(p => p.kind === 'added'), [])
+})
+
+test('real spelling mistakes still appear alongside an accepted oe ligature fallback', () => {
+  const result = compareTranslations('Ma soeur est fatigué.', 'Ma sœur est fatiguée.')
+  assert.equal(result.hasChanges, true)
+  assert.deepEqual(result.changes, [{ before: 'fatigué', after: 'fatiguée' }])
+})
+
+test('accents and unrelated spelling are not ignored', () => {
+  const result = compareTranslations('Je suis alle au theatre.', 'Je suis allé au théâtre.')
+  assert.equal(result.hasChanges, true)
+  assert.ok(result.changes.some(x => x.before === 'alle' && x.after === 'allé'))
+  assert.ok(result.changes.some(x => x.before === 'theatre' && x.after === 'théâtre'))
+})
+
+test('uppercase ligature fallback is accepted without changing case rules', () => {
+  const result = compareTranslations('SOEUR', 'SŒUR')
+  assert.equal(result.hasChanges, false)
+  assert.deepEqual(result.changes, [])
+})
