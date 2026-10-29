@@ -8,7 +8,7 @@ import {
   X, XCircle, AlertTriangle, Star, CalendarDays, Home, BarChart3, Bookmark
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { LEVELS, type EvaluationResponse, type Level, type Sentence, type Status, type PracticeScore } from '@/lib/types'
+import { LEVELS, type EvaluationResponse, type Level, type Sentence, type Status, type PracticeScore, type OrthographyWord, type OrthographyReviewResponse } from '@/lib/types'
 import { compareTranslations, type DiffPart } from '@/lib/translation-diff'
 
 type View = 'home' | 'practice' | 'review' | 'bank' | 'progress'
@@ -161,6 +161,9 @@ function FeedbackPanel({ feedback, userAnswer, onNext, onRetry, onFavorite, isFa
       <div className="flex items-center gap-3"><StatusIcon size={22} /><span className="font-bold">{info.label}</span></div>
       <span className="text-lg font-extrabold tabular">{feedback.score}/100</span>
     </div>
+    {(feedback.orthographySaved ?? 0) > 0 && <p className="rounded-xl bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-700">
+      {feedback.orthographySaved} {feedback.orthographySaved === 1 ? 'palabra añadida o reforzada' : 'palabras añadidas o reforzadas'} para Repasar → Ortografía.
+    </p>}
     <div className="grid grid-cols-3 gap-2" aria-label="Acciones de la corrección">
       <button type="button" onClick={onRetry} className="flex min-h-12 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-1 text-xs font-bold text-slate-700 hover:bg-slate-50 sm:text-sm">
         <RotateCcw size={17} /> Reintentar
@@ -274,6 +277,15 @@ function Login({ onLogin, busy, error }: { onLogin: (pin: string) => Promise<voi
 export default function Page() {
   const [view, setView] = useState<View>('practice')
   const [reviewWeak, setReviewWeak] = useState(false)
+  const [reviewMode, setReviewMode] = useState<'sentences' | 'orthography'>('sentences')
+  const [spellWords, setSpellWords] = useState<OrthographyWord[]>([])
+  const [spellError, setSpellError] = useState('')
+  const [spellAnswer, setSpellAnswer] = useState('')
+  const [spellResult, setSpellResult] = useState<OrthographyReviewResponse | null>(null)
+  const [spellSeen, setSpellSeen] = useState<string[]>([])
+  const [spellBusy, setSpellBusy] = useState(false)
+  const [spellAhead, setSpellAhead] = useState(false)
+
   const [reviewSeen, setReviewSeen] = useState<string[]>([])
   const [favoriteIds, setFavoriteIds] = useState<string[]>([])
   const [onlyFavorites, setOnlyFavorites] = useState(false)
@@ -304,6 +316,7 @@ export default function Page() {
   const [isTyping, setIsTyping] = useState(false)
   const [keyboardInset, setKeyboardInset] = useState(0)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const spellInputRef = useRef<HTMLInputElement>(null)
   const enterAdvanceLock = useRef(false)
   const focusAfterNext = useRef(false)
   const practiceIdRef = useRef<string | null>(null)
@@ -321,6 +334,13 @@ export default function Page() {
       } catch {
         setScores([])
         setScoresError('No se ha podido cargar el historial de notas. Vuelve a abrir Parole.')
+      }
+      try {
+        const spelling = await api<{ words: OrthographyWord[] }>('/api/orthography')
+        setSpellWords(spelling.words)
+        setSpellError('')
+      } catch {
+        setSpellError('No se ha podido sincronizar la ortografía. Prueba a actualizar.')
       }
       setNow(Date.now())
     } catch (e) { setError(e instanceof Error ? e.message : 'No se pudieron cargar las frases') }
@@ -440,6 +460,68 @@ export default function Page() {
     }
   }, [scores, level])
 
+  const spellActive = useMemo(() => spellWords.filter(w => w.state === 'active'), [spellWords])
+  const spellDue = spellActive.filter(w => new Date(w.next_review_at).getTime() <= now)
+  const spellMastered = spellActive.filter(w => w.mastery_score >= 4).length
+  const spellCurrent = spellActive.filter(w =>
+    (spellAhead || new Date(w.next_review_at).getTime() <= now) && !spellSeen.includes(w.id))
+    .sort((a, b) => new Date(a.next_review_at).getTime() - new Date(b.next_review_at).getTime())[0] ?? null
+
+  const saveSpellWord = (word: OrthographyWord) =>
+    setSpellWords(prev => prev.map(w => w.id === word.id ? word : w))
+
+  const submitSpelling = async (event: FormEvent) => {
+    event.preventDefault()
+    if (!spellCurrent || !spellAnswer.trim() || spellBusy || spellResult) return
+    setSpellBusy(true); setSpellError('')
+    spellInputRef.current?.blur()
+    try {
+      const result = await api<OrthographyReviewResponse>('/api/orthography-review', {
+        method: 'POST', body: JSON.stringify({ wordId: spellCurrent.id, answer: spellAnswer })
+      })
+      saveSpellWord(result.word)
+      setSpellResult(result)
+      setNow(Date.now())
+    } catch (e) {
+      setSpellError(e instanceof Error ? e.message : 'No se ha podido corregir la palabra.')
+    } finally { setSpellBusy(false) }
+  }
+  const nextSpelling = () => {
+    if (spellCurrent) setSpellSeen(prev => [...prev, spellCurrent.id])
+    setSpellResult(null); setSpellAnswer(''); setSpellError('')
+  }
+  const setSpellingStatus = async (word: OrthographyWord, state: 'active' | 'dismissed') => {
+    setSpellError('')
+    try {
+      const result = await api<{ word: OrthographyWord }>('/api/orthography-status', {
+        method: 'POST', body: JSON.stringify({ wordId: word.id, state })
+      })
+      saveSpellWord(result.word)
+      if (word.id === spellCurrent?.id) {
+        setSpellResult(null); setSpellAnswer('')
+      }
+      setNow(Date.now())
+    } catch (e) { setSpellError(e instanceof Error ? e.message : 'No se ha podido actualizar la palabra.') }
+  }
+  useEffect(() => {
+    if (view === 'review' && reviewMode === 'orthography' && !spellResult &&
+        window.matchMedia('(pointer: fine)').matches) spellInputRef.current?.focus()
+  }, [view, reviewMode, spellResult, spellSeen])
+  useEffect(() => {
+    if (view !== 'review' || reviewMode !== 'orthography' || !spellResult) return
+    const handler = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== 'Enter' || event.repeat || event.isComposing || event.keyCode === 229 ||
+          !window.matchMedia('(pointer: fine)').matches ||
+          event.ctrlKey || event.altKey || event.metaKey) return
+      if (event.target instanceof Element &&
+          event.target.closest('button, input, textarea, select, a, summary, [contenteditable]')) return
+      event.preventDefault()
+      nextSpelling()
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [view, reviewMode, spellResult, spellCurrent])
+
   const toggleFavorite = (id: string) => {
     setFavoriteIds(prev => {
       const updated = prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
@@ -492,6 +574,11 @@ export default function Page() {
       if (result.scoreRecord) {
         setScores(previous => previous.some(s => s.practice_id === result.scoreRecord?.practice_id)
           ? previous : [...previous, result.scoreRecord!])
+      }
+      if ((result.orthographySaved ?? 0) > 0) {
+        void api<{ words: OrthographyWord[] }>('/api/orthography')
+          .then(data => setSpellWords(data.words))
+          .catch(() => setSpellError('La ortografía se guardó, pero falta sincronizarla.'))
       }
       setNow(Date.now())
     } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo corregir') }
@@ -643,6 +730,19 @@ export default function Page() {
       })}
     </nav>
 
+    {view === 'review' && <div className="mt-5 grid grid-cols-2 gap-2 rounded-2xl bg-slate-100 p-1.5" role="group" aria-label="Modalidad de repaso">
+      <button type="button" onClick={() => { setReviewMode('sentences'); setSpellResult(null); setSpellAnswer('') }}
+        aria-pressed={reviewMode === 'sentences'}
+        className={cn('rounded-xl px-3 py-3 text-sm font-bold', reviewMode === 'sentences' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600')}>
+        Frases ({reviewCandidates.length})
+      </button>
+      <button type="button" onClick={() => { setReviewMode('orthography'); setSpellSeen([]); setSpellResult(null); setSpellAnswer(''); setSpellAhead(false) }}
+        aria-pressed={reviewMode === 'orthography'}
+        className={cn('rounded-xl px-3 py-3 text-sm font-bold', reviewMode === 'orthography' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600')}>
+        Ortografía ({spellDue.length})
+      </button>
+    </div>}
+    
     {view === 'home' ? <section className="mt-5 space-y-5 sm:mt-7">
       <div className="soft-shadow rounded-[24px] border border-indigo-100 bg-white p-5 sm:p-8">
         <p className="text-xs font-bold uppercase tracking-widest text-indigo-600">Tu francés, día a día</p>
@@ -734,6 +834,17 @@ export default function Page() {
           <div className="rounded-xl bg-indigo-50 p-4"><div className="text-3xl font-extrabold text-indigo-700">{masteryPercent}%</div><p className="mt-1 text-xs text-slate-600">Dominadas entre las practicadas</p></div>
           <div className="rounded-xl bg-emerald-50 p-4"><div className="text-3xl font-extrabold text-emerald-700">{filtered.reduce((total, s) => total + s.times_practiced, 0)}</div><p className="mt-1 text-xs text-slate-600">Intentos acumulados</p></div>
         </div>
+        <div className="mt-4 grid grid-cols-2 gap-3">
+          <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+            <div className="text-2xl font-extrabold text-slate-800">{spellActive.length - spellMastered}</div>
+            <p className="mt-1 text-xs text-slate-600">Palabras de ortografía por consolidar</p>
+          </div>
+          <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-4">
+            <div className="text-2xl font-extrabold text-emerald-700">{spellMastered}</div>
+            <p className="mt-1 text-xs text-slate-600">Palabras de ortografía dominadas</p>
+          </div>
+        </div>
+        <p className="mt-2 text-xs text-slate-500">Las palabras de ortografía se cuentan globalmente, independientemente del nivel seleccionado.</p>
         <div className="mt-6 space-y-5">
           {levelStats.map(stat => <div key={stat.level}>
             <div className="mb-2 flex justify-between gap-3 text-sm"><span className="font-bold text-slate-700">Nivel {stat.level}</span><span className="tabular text-slate-500">{stat.mastered} de {stat.total} dominadas</span></div>
@@ -744,6 +855,92 @@ export default function Page() {
       <button type="button" onClick={() => navigate('review')} className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 p-4 font-bold text-white">
         <RotateCcw size={19} /> Repasar frases pendientes
       </button>
+    </section> : view === 'review' && reviewMode === 'orthography' ? <section className="mt-4 space-y-4">
+      <div className="soft-shadow rounded-[24px] border border-slate-100 bg-white p-5 sm:p-8">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 className="text-xl font-extrabold text-slate-900">Escribe la palabra</h2>
+            <p className="mt-1 text-sm text-slate-500">Recupérala de memoria. Se respetan los acentos y las letras dobles.</p>
+          </div>
+          <span className="rounded-lg bg-indigo-50 px-3 py-2 text-xs font-bold text-indigo-700">
+            {spellDue.length} pendientes
+          </span>
+        </div>
+        {spellError && <p className="mb-4 rounded-xl bg-rose-50 p-3 text-sm text-rose-800" role="alert">{spellError}</p>}
+        {spellCurrent ? <>
+          <div className="rounded-2xl bg-slate-50 p-4 sm:p-6">
+            <p className="text-xs font-bold uppercase tracking-wider text-indigo-600">Traduce al francés</p>
+            <h3 className="mt-2 text-2xl font-bold text-slate-900">{spellCurrent.meaning_es}</h3>
+            <p className="mt-3 text-base leading-relaxed text-slate-600">{spellCurrent.context_fr}</p>
+          </div>
+          <form onSubmit={submitSpelling} className="mt-5 space-y-3">
+            <label htmlFor="spell-input" className="sr-only">Escribe la palabra en francés</label>
+            <input id="spell-input" ref={spellInputRef} type="text" autoComplete="off" autoCorrect="off"
+              autoCapitalize="off" spellCheck={false} disabled={spellBusy || spellResult !== null}
+              value={spellAnswer} onChange={event => setSpellAnswer(event.target.value)}
+              placeholder="Escribe en francés..."
+              className="block w-full rounded-xl border-2 border-slate-200 bg-white px-4 py-4 text-lg text-slate-900 outline-none focus:border-indigo-500 disabled:bg-slate-50" />
+            {!spellResult && <button type="submit" disabled={!spellAnswer.trim() || spellBusy}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 py-3.5 font-bold text-white disabled:opacity-40">
+              {spellBusy ? <Loader2 size={18} className="animate-spin" /> : <ArrowRight size={18} />}
+              {spellBusy ? 'Comprobando...' : 'Comprobar'}
+            </button>}
+          </form>
+          {spellResult && <div className={cn('mt-4 rounded-2xl border p-4', spellResult.correct ? 'border-emerald-200 bg-emerald-50' : 'border-rose-200 bg-rose-50')} role="status">
+            <div className="flex items-center gap-2 font-bold">
+              {spellResult.correct ? <CheckCircle2 size={20} className="text-emerald-700" /> : <XCircle size={20} className="text-rose-700" />}
+              {spellResult.correct ? '¡Correcto!' : 'Repasaremos esta palabra de nuevo'}
+            </div>
+            <p className="mt-2 text-xl font-extrabold text-slate-900">{spellResult.word.correct_word}</p>
+            {!spellResult.correct && <p className="mt-1 text-sm text-slate-600">Escribiste: {spellAnswer}</p>}
+            <button type="button" onClick={nextSpelling}
+              className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-3 font-bold text-white">
+              Siguiente <ArrowRight size={18}/>
+            </button>
+            <p className="mt-2 hidden text-center text-xs text-slate-500 sm:block">Pulsa Enter para continuar</p>
+          </div>}
+          <button type="button" onClick={() => void setSpellingStatus(spellCurrent, 'dismissed')}
+            className="mt-4 text-xs font-semibold text-slate-500 underline underline-offset-4 hover:text-rose-700">
+            No es una falta de ortografía · Descartar
+          </button>
+        </> : <div className="py-10 text-center">
+          <CheckCircle2 size={38} className="mx-auto text-emerald-600" />
+          <h3 className="mt-3 text-xl font-extrabold text-slate-900">¡Ortografía al día!</h3>
+          <p className="mt-2 text-sm text-slate-500">
+            {spellActive.length === 0 ? 'Tus próximas faltas de ortografía se guardarán aquí automáticamente.' : 'No quedan palabras pendientes en esta sesión.'}
+          </p>
+          {spellActive.length > 0 && !spellAhead && <button type="button" onClick={() => { setSpellAhead(true); setSpellSeen([]) }}
+            className="mt-5 rounded-xl border border-indigo-200 px-4 py-3 text-sm font-bold text-indigo-700">
+            Practicar por adelantado
+          </button>}
+          {spellAhead && spellSeen.length > 0 && <button type="button" onClick={() => { setSpellSeen([]); setSpellResult(null) }}
+            className="mt-5 rounded-xl border border-indigo-200 px-4 py-3 text-sm font-bold text-indigo-700">
+            Volver a practicar
+          </button>}
+        </div>}
+      </div>
+      <details className="rounded-2xl border border-slate-100 bg-white px-4 py-3">
+        <summary className="cursor-pointer text-sm font-bold text-slate-700">Gestionar palabras ({spellWords.length})</summary>
+        <p className="mt-3 text-xs leading-relaxed text-slate-500">
+          Puedes descartar errores que la IA haya identificado incorrectamente y recuperarlos cuando quieras.
+        </p>
+        <div className="mt-3 max-h-72 space-y-2 overflow-y-auto">
+          {spellWords.map(word => <div key={word.id} className="flex items-center justify-between gap-3 border-b border-slate-100 py-2">
+            <div className="min-w-0">
+              <p className="break-words text-sm font-bold text-slate-900">{word.correct_word}</p>
+              <p className="text-xs text-slate-500">
+                {word.state === 'dismissed' ? 'Descartada' : word.mastery_score >= 4 ? 'Dominada' : 'En aprendizaje'}
+                {word.state === 'active' && ' · ' + whenReview(word.next_review_at, now)}
+              </p>
+            </div>
+            <button type="button" onClick={() => void setSpellingStatus(word, word.state === 'active' ? 'dismissed' : 'active')}
+              className="shrink-0 rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-indigo-700">
+              {word.state === 'active' ? 'Descartar' : 'Recuperar'}
+            </button>
+          </div>)}
+          {spellWords.length === 0 && <p className="py-3 text-sm text-slate-500">Todavía no hay palabras guardadas.</p>}
+        </div>
+      </details>
     </section> : view === 'practice' || view === 'review' ? <div className="mt-3 grid items-start gap-4 sm:mt-7 lg:grid-cols-[minmax(0,1fr)_290px] lg:gap-6">
       {view === 'review' && <div className="col-span-full flex flex-wrap items-center gap-2 rounded-2xl border border-indigo-100 bg-white p-3">
         <button type="button" onClick={() => { practiceIdRef.current = null; setReviewWeak(false); setReviewSeen([]); setActiveId(null); setFeedback(null); setAnswer(''); setShowHint(false) }}
