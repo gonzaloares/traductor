@@ -229,6 +229,19 @@ export function MiniExam({ api, onExit, onFinished }: { api: API; onExit: () => 
     finally { setBusy(false) }
   }
 
+  const abandon = async () => {
+    if (!paper || busy || recording || transcribing ||
+        !window.confirm('¿Abandonar este examen? Se perderán sus respuestas y podrás elegir otro nivel.')) return
+    setBusy(true); setError('')
+    try {
+      await api<{ ok: boolean }>('/api/mini-exam-abandon', request({ examId: paper.id }))
+      localStorage.removeItem('parole_exam_draft_' + paper.id)
+      window.speechSynthesis?.cancel()
+      setPaper(null); setResult(null); setStep(0); setAnswers(emptyExamAnswers()); setListenCount(0)
+    } catch(e) { setError(e instanceof Error ? e.message : 'No se pudo abandonar el examen.') }
+    finally { setBusy(false) }
+  }
+
   if (loading) return <div className="flex justify-center p-12 text-indigo-600"><Loader2 className="animate-spin" /></div>
   if (result) return <section className="mt-5 space-y-5">
     <div className="soft-shadow rounded-3xl border border-indigo-100 bg-white p-5 sm:p-8">
@@ -380,7 +393,11 @@ export function MiniExam({ api, onExit, onFinished }: { api: API; onExit: () => 
       </div>
       <div className="mt-4 flex items-center justify-between gap-2 text-xs text-slate-500">
         <span>Tu borrador se guarda en este dispositivo mientras realizas el examen.</span>
-        <button type="button" onClick={onExit} className="shrink-0 font-semibold text-indigo-700 underline">Salir</button>
+        <span className="flex shrink-0 items-center gap-3">
+          <button type="button" disabled={busy || recording || transcribing} onClick={() => void abandon()}
+            className="font-semibold text-rose-700 underline disabled:opacity-50">Abandonar</button>
+          <button type="button" onClick={onExit} className="font-semibold text-indigo-700 underline">Salir</button>
+        </span>
       </div>
     </div>
   </section>
