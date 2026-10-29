@@ -569,6 +569,18 @@ export default function Page() {
     const items = sentences.filter(s => s.level === item)
     return { level: item, total: items.length, mastered: items.filter(s => s.mastery_score >= 4).length }
   })
+  // Each saved score represents the first answer to a practice encounter; later
+  // independent SRS reviews count, but pressing "Reintentar" does not.
+  const averageByLevel = useMemo(() => LEVELS.map(item => {
+    const results = scores.filter(score => score.level === item)
+    return {
+      level: item,
+      count: results.length,
+      mean: results.length
+        ? Math.round(results.reduce((sum, result) => sum + result.score, 0) / results.length)
+        : null
+    }
+  }), [scores])
 
   // Only the first correction of a practice encounter contributes to the average.
   // The id survives "Volver a intentar" but is renewed for a new encounter.
@@ -932,6 +944,25 @@ export default function Page() {
               <p className="mt-2 text-xs font-semibold text-slate-700">
                 {progress.change > 0 ? '+' : ''}{progress.change} puntos frente a las 20 anteriores
               </p>}
+          </div>
+        </div>
+        <div className="mt-6 border-t border-slate-100 pt-5">
+          <h3 className="text-base font-extrabold text-slate-800">Nota media por nivel</h3>
+          <p className="mt-1 text-xs leading-relaxed text-slate-500">
+            Comparativa A1–C2, independientemente del filtro seleccionado. Cada respuesta registrada cuenta una vez.
+          </p>
+          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+            {averageByLevel.map(stat => <div key={stat.level}
+              className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+              <div className="text-xs font-bold text-slate-600">Nivel {stat.level}</div>
+              <div className="mt-1 text-2xl font-extrabold tabular-nums text-indigo-700">
+                {stat.mean ?? '—'}
+                {stat.mean !== null && <span className="ml-0.5 text-xs font-semibold text-slate-500">/100</span>}
+              </div>
+              <p className="mt-1 text-xs text-slate-500">
+                {stat.count === 0 ? 'Sin notas todavía' : stat.count + (stat.count === 1 ? ' respuesta' : ' respuestas')}
+              </p>
+            </div>)}
           </div>
         </div>
         {progress.total === 0
