@@ -434,6 +434,8 @@ export default function Page() {
   }
   const correct = async () => {
     if (!current || !answer.trim() || submitting || feedback) return
+    textareaRef.current?.blur()
+    setIsTyping(false)
     setSubmitting(true); setError(''); setActiveId(current.id)
     try {
       const result = await api<EvaluationResponse>('/api/evaluate', {
@@ -499,25 +501,35 @@ export default function Page() {
   if (!authorized) return <Login onLogin={login} busy={authBusy} error={authError} />
 
   return <main className="mx-auto min-h-screen max-w-6xl px-4 pb-32 sm:px-6 sm:pb-20 lg:px-8">
-    <header className="flex items-center justify-between gap-2 border-b border-slate-200/70 py-3 sm:gap-4 sm:py-7">
+    <header className="flex items-center justify-between gap-2 border-b border-slate-200/70 py-2.5 sm:py-6">
       <div className="flex min-w-0 items-center gap-2 sm:gap-3">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-indigo-600 sm:h-11 sm:w-11 sm:rounded-2xl text-xl font-black text-white shadow-md shadow-indigo-200">P<span className="text-amber-300">.</span></div>
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-xl font-black text-white shadow-md shadow-indigo-200 sm:h-11 sm:w-11 sm:rounded-2xl">P<span className="text-amber-300">.</span></div>
         <div><div className="text-[19px] font-extrabold tracking-tight text-slate-900 sm:text-[22px]">parole<span className="text-indigo-600">.</span></div>
           <p className="hidden text-[11px] font-medium tracking-wide text-slate-500 sm:block">FRANCÉS ACTIVO · A1—B2</p></div>
       </div>
-      <button type="button" onClick={() => { setGeneratorOpen(true); setNotice('') }}
+      {view === 'practice' ? <div className="flex items-center gap-2">
+        <label htmlFor="practice-level" className="sr-only">Nivel de práctica</label>
+        <select id="practice-level" value={level} onChange={e => changeLevel(e.target.value as Filter)}
+          className="max-w-28 rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-sm font-semibold text-slate-800">
+          {(['Todos', ...LEVELS] as const).map(v => <option key={v} value={v}>{v}</option>)}
+        </select>
+        <button type="button" onClick={() => void load()} disabled={loading} aria-label="Sincronizar" title="Sincronizar con la nube"
+          className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500">
+          <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
+        </button>
+      </div> : <button type="button" onClick={() => { setGeneratorOpen(true); setNotice('') }}
         className="flex shrink-0 items-center gap-1.5 rounded-xl bg-indigo-600 px-3 py-2.5 text-xs font-bold text-white shadow-lg shadow-indigo-100 transition hover:bg-indigo-700 sm:gap-2 sm:px-5 sm:py-3 sm:text-sm">
         <Sparkles size={17} /> <span className="hidden sm:inline">Generar nuevas frases con IA</span><span className="sm:hidden">Generar con IA</span>
-      </button>
+      </button>}
     </header>
-
-    <div className="mt-4 flex items-center justify-between gap-2 sm:mt-9 sm:flex-wrap sm:items-end sm:gap-5">
+    {view !== 'practice' && <div className="mt-4 flex items-center justify-between gap-2 sm:mt-9 sm:flex-wrap sm:items-end sm:gap-5">
       <div>
-        <div className="mb-3 hidden items-center gap-2 rounded-full bg-indigo-50 sm:inline-flex px-3 py-1.5 text-xs font-bold text-indigo-600">
+        <div className="mb-3 hidden items-center gap-2 rounded-full bg-indigo-50 px-3 py-1.5 text-xs font-bold text-indigo-600 sm:inline-flex">
           <Star size={13} fill="currentColor" /> Un poco cada día, mucho francés
         </div>
         <h1 className="text-[21px] font-extrabold tracking-tight text-slate-900 sm:text-4xl">
-          <span className="sm:hidden">{view === 'home' ? 'Tu inicio' : view === 'practice' ? '¡A practicar!' : view === 'review' ? 'Tus repasos' : view === 'bank' ? 'Mis frases' : 'Tu progreso'}</span><span className="hidden sm:inline">{view === 'practice' ? <>Bonjour, <span className="text-indigo-600">¡a practicar!</span></> : view === 'home' ? 'Tu inicio' : view === 'review' ? 'Repaso espaciado' : view === 'bank' ? 'Mis frases' : 'Tu progreso'}</span>
+          <span className="sm:hidden">{view === 'home' ? 'Tu inicio' : view === 'review' ? 'Tus repasos' : view === 'bank' ? 'Mis frases' : 'Tu progreso'}</span>
+          <span className="hidden sm:inline">{view === 'home' ? 'Tu inicio' : view === 'review' ? 'Repaso espaciado' : view === 'bank' ? 'Mis frases' : 'Tu progreso'}</span>
         </h1>
         <p className="mt-2 hidden text-sm leading-relaxed text-slate-600 sm:block sm:text-base">Traduce, recibe feedback y repasa justo cuando lo necesitas.</p>
       </div>
@@ -531,24 +543,6 @@ export default function Page() {
           className="rounded-xl border border-slate-200 bg-white p-2.5 text-slate-500 hover:text-indigo-600">
           <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
         </button>
-      </div>
-    </div>
-
-    {view === 'practice' && <div className="mt-3 grid grid-cols-3 gap-2 sm:mt-7 sm:gap-5">
-      <div className="soft-shadow rounded-xl border border-slate-100 bg-white p-2.5 sm:rounded-2xl sm:p-5">
-        <div className="mb-1 hidden items-center gap-2 text-slate-500 sm:mb-3 sm:flex"><Layers3 size={18} /><span className="hidden text-xs font-semibold sm:inline">Banco personal</span></div>
-        <div className="text-[22px] font-extrabold text-slate-900 tabular sm:text-3xl">{filtered.length}</div>
-        <div className="mt-0.5 text-[11px] font-semibold leading-tight text-slate-600 sm:mt-1 sm:text-sm">Frases totales</div>
-      </div>
-      <div className="soft-shadow rounded-xl border border-indigo-100 bg-indigo-600 p-2.5 text-white sm:rounded-2xl sm:p-5">
-        <div className="mb-1 hidden items-center gap-2 text-indigo-100 sm:mb-3 sm:flex"><Clock3 size={18} /><span className="hidden text-xs font-semibold sm:inline">Tu repaso</span></div>
-        <div className="text-[22px] font-extrabold tabular sm:text-3xl">{due.length}</div>
-        <div className="mt-0.5 text-[11px] font-semibold leading-tight text-indigo-50 sm:mt-1 sm:text-sm">Pendientes hoy</div>
-      </div>
-      <div className="soft-shadow rounded-xl border border-slate-100 bg-white p-2.5 sm:rounded-2xl sm:p-5">
-        <div className="mb-1 hidden items-center gap-2 text-emerald-500 sm:mb-3 sm:flex"><CheckCircle2 size={18} /><span className="hidden text-xs font-semibold text-slate-500 sm:inline">¡Vas muy bien!</span></div>
-        <div className="text-[22px] font-extrabold text-slate-900 tabular sm:text-3xl">{mastered}</div>
-        <div className="mt-0.5 text-[11px] font-semibold leading-tight text-slate-600 sm:mt-1 sm:text-sm">Dominadas (4–5)</div>
       </div>
     </div>}
 
@@ -634,26 +628,35 @@ export default function Page() {
       <section className="soft-shadow min-w-0 rounded-[22px] border border-slate-100 bg-white p-4 sm:rounded-[26px] sm:p-8">
         {loading ? <div className="flex min-h-80 items-center justify-center gap-2 text-slate-500"><Loader2 className="animate-spin" /> Cargando frases...</div>
           : current ? <>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className={cn('rounded-lg border px-3 py-1.5 text-xs font-extrabold', levelStyle(current.level))}>{current.level}</span>
-            <span className="max-w-full rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-600">{current.grammar_topic}</span>
-            {new Date(current.next_review_at).getTime() > now && <span className="rounded-lg bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700">Repaso anticipado</span>}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className={cn('shrink-0 rounded-lg border px-2.5 py-1.5 text-xs font-extrabold', levelStyle(current.level))}>{current.level}</span>
+              <span title={current.grammar_topic} className="max-w-[46vw] truncate rounded-lg bg-slate-100 px-2.5 py-1.5 text-xs font-semibold text-slate-600 sm:max-w-none">{current.grammar_topic}</span>
+              {view === 'review' && new Date(current.next_review_at).getTime() > now &&
+                <span className="rounded-lg bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700">Repaso anticipado</span>}
+            </div>
+            {view === 'practice' && <div className="flex shrink-0 items-center gap-1.5">
+              <button type="button" onClick={() => setShowHint(value => !value)} aria-expanded={showHint}
+                aria-label={showHint ? 'Ocultar pista' : 'Mostrar pista'} title={showHint ? 'Ocultar pista' : 'Mostrar pista'}
+                className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-700 hover:bg-amber-100">
+                <Lightbulb size={19} />
+              </button>
+              <SpeakButton text={current.spanish_text} lang="es-ES" label="Escuchar el enunciado en español" />
+            </div>}
           </div>
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3 sm:mt-5 sm:pb-5">
+          {view === 'review' && <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3 sm:mt-5 sm:pb-5">
             <Mastery score={current.mastery_score} showLabel />
             <span className="text-xs text-slate-500">{current.times_practiced} {current.times_practiced === 1 ? 'intento' : 'intentos'} previos</span>
-          </div>
-
-          <div className="mt-4 sm:mt-7">
-            <div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-[.16em] text-indigo-600 sm:mb-3">
+          </div>}
+          <div className="mt-5 sm:mt-7">
+            <div className={cn('mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-[.16em] text-indigo-600 sm:mb-3', view === 'practice' && 'sr-only')}>
               <MessageCircle size={16} /> Traduce al francés
             </div>
             <h2 className="lesson-text text-[26px] leading-[1.35] font-medium tracking-tight text-slate-900 sm:text-[34px]">
               {current.spanish_text}
             </h2>
           </div>
-
-          <div className="mt-3 flex flex-wrap items-center gap-2">
+          {view === 'review' && <div className="mt-3 flex flex-wrap items-center gap-2">
             <button type="button" onClick={() => setShowHint(value => !value)} aria-expanded={showHint}
               className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 text-sm font-bold text-amber-800">
               <Lightbulb size={17} /> {showHint ? 'Ocultar pista' : 'Pista'}
@@ -662,40 +665,42 @@ export default function Page() {
               <SpeakButton text={current.spanish_text} lang="es-ES" label="Escuchar el enunciado en español" />
               <span className="pr-1">Escuchar</span>
             </div>
-          </div>
+          </div>}
           {showHint && <p className="mt-3 rounded-xl border border-amber-100 bg-amber-50 p-3 text-sm text-amber-900">
             <strong>Pista:</strong> {current.grammar_topic}. La traducción comienza por «{current.reference_french.trim().split(/\s+/).slice(0, 2).join(' ')}…».
           </p>}
-          <div className="mt-5 sm:mt-9">
-            <label htmlFor="translation" className="mb-2 block text-sm font-bold text-slate-700">Tu traducción</label>
+          {!feedback ? <div className="mt-5 sm:mt-8">
+            <label htmlFor="translation" className={cn('mb-2 block text-sm font-bold text-slate-700', view === 'practice' && 'sr-only')}>Tu traducción</label>
             <textarea id="translation" ref={textareaRef} value={answer} onChange={e => setAnswer(e.target.value)}
-              onKeyDown={keyDown} onFocus={() => setIsTyping(true)} onBlur={() => setIsTyping(false)} rows={3} disabled={submitting || !!feedback}
-              placeholder="Écris ta traduction ici..."
+              onKeyDown={keyDown} onFocus={() => setIsTyping(true)} onBlur={() => setIsTyping(false)}
+              rows={3} disabled={submitting} placeholder="Escribe tu traducción en francés..."
               className="block min-h-28 w-full resize-y rounded-2xl border-2 border-slate-200 bg-slate-50/40 p-3.5 text-base leading-relaxed text-slate-900 placeholder:text-slate-500 focus:border-indigo-500 focus:bg-white focus:outline-none sm:min-h-36 sm:p-4 sm:text-lg" />
-            {!feedback && <div className="mt-3 flex flex-wrap items-center justify-between gap-3 sm:mt-6">
-              <span className="hidden items-center gap-1.5 text-xs text-slate-500 sm:flex"><Keyboard size={16} /> Ctrl/⌘ + Enter para corregir</span>
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3 sm:mt-6">
+              <span className="hidden items-center gap-1.5 text-xs text-slate-500 sm:flex"><Keyboard size={16} /> Ctrl/⌘ + Enter para enviar</span>
               <button type="button" disabled={!answer.trim() || submitting} onClick={() => void correct()}
                 className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-8 py-3.5 text-sm font-bold text-white shadow-lg shadow-indigo-100 transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-40 sm:ml-auto sm:w-auto">
-                {submitting ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
-                {submitting ? 'Corrigiendo...' : 'Corregir traducción'} <ArrowRight size={18} />
+                {submitting ? <Loader2 size={18} className="animate-spin" /> : <ArrowRight size={18} />}
+                {submitting ? 'Corrigiendo...' : 'Enviar'}
               </button>
-            </div>}
-            {!feedback && <div className="mt-3 flex flex-wrap gap-1.5 sm:mt-4" aria-label="Caracteres franceses">
-              {CHARACTERS.map(ch => <button type="button" key={ch} onClick={() => insertCharacter(ch)}
-                disabled={submitting} aria-label={'Insertar ' + ch}
-                className="flex h-9 min-w-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-2 text-sm font-bold text-slate-700 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-600 disabled:opacity-50">{ch}</button>)}
-            </div>}
-            {isTyping && !feedback && answer.trim() && <div className="fixed inset-x-0 z-40 border-t border-slate-200 bg-white/95 px-4 py-2.5 shadow-lg backdrop-blur sm:hidden"
+            </div>
+            <details className="mt-3 text-sm sm:mt-4">
+              <summary className="w-fit cursor-pointer rounded-lg px-2 py-1 text-xs font-semibold text-slate-500 hover:text-indigo-600">Caracteres franceses</summary>
+              <div className="mt-2 flex flex-wrap gap-1.5" aria-label="Caracteres franceses">
+                {CHARACTERS.map(ch => <button type="button" key={ch} onClick={() => insertCharacter(ch)}
+                  disabled={submitting} aria-label={'Insertar ' + ch}
+                  className="flex h-9 min-w-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-2 text-sm font-bold text-slate-700 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-600 disabled:opacity-50">{ch}</button>)}
+              </div>
+            </details>
+            {isTyping && answer.trim() && <div className="fixed inset-x-0 z-40 border-t border-slate-200 bg-white/95 px-4 py-2.5 shadow-lg backdrop-blur sm:hidden"
               style={{ bottom: keyboardInset }}>
               <button type="button" disabled={submitting} onPointerDown={event => event.preventDefault()}
                 onClick={() => { textareaRef.current?.blur(); void correct() }}
                 className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 py-3 font-bold text-white disabled:opacity-50">
-                {submitting ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
-                {submitting ? 'Corrigiendo...' : 'Corregir traducción'} <ArrowRight size={18} />
+                {submitting ? <Loader2 size={18} className="animate-spin" /> : <ArrowRight size={18} />}
+                {submitting ? 'Corrigiendo...' : 'Enviar'}
               </button>
             </div>}
-          </div>
-          {feedback && <FeedbackPanel feedback={feedback} userAnswer={answer} onNext={next}
+          </div> : <FeedbackPanel feedback={feedback} userAnswer={answer} onNext={next}
             onRetry={retry} onFavorite={() => toggleFavorite(current.id)} isFavorite={favoriteIds.includes(current.id)} />}
         </> : <div className="flex min-h-[380px] flex-col items-center justify-center text-center">
           <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600"><CheckCircle2 size={33} /></div>
@@ -734,14 +739,14 @@ export default function Page() {
           <p className="mt-2 text-xs font-semibold text-slate-500">{filtered.length ? Math.round(mastered / filtered.length * 100) : 0}% de frases dominadas</p>
         </div>
       </aside>
-      <details className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 lg:hidden">
+      {view === 'review' && <details className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 lg:hidden">
         <summary className="cursor-pointer font-semibold text-indigo-700">Cómo funciona Parole y la repetición espaciada</summary>
         <div className="mt-3 space-y-2 leading-relaxed text-slate-700">
           <p>Traduce sin consultar la solución, revisa los errores y escucha la frase corregida.</p>
           <p>El repaso se programa tras 1, 3, 7, 14 o 30 días si aciertas; 12 horas ante errores leves y 10 minutos ante errores importantes.</p>
           <p className="font-semibold">{filtered.length ? Math.round(mastered / filtered.length * 100) : 0}% de frases dominadas.</p>
         </div>
-      </details>
+      </details>}
     </div> : <section className="soft-shadow mt-7 overflow-hidden rounded-[26px] border border-slate-100 bg-white">
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 p-5 sm:p-7">
         <div><h2 className="text-xl font-extrabold text-slate-900">Tu banco de frases</h2>
@@ -794,9 +799,9 @@ export default function Page() {
         </div>}
     </section>}
 
-    <footer className="mt-10 flex flex-wrap justify-center gap-2 text-center text-xs text-slate-500">
+    {view !== 'practice' && <footer className="mt-10 flex flex-wrap justify-center gap-2 text-center text-xs text-slate-500">
       <span>Parole · aprende francés con práctica deliberada</span><span>·</span><span>Progreso sincronizado en Supabase</span>
-    </footer>
+    </footer>}
 
     <nav aria-label="Navegación principal" className={cn('fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 shadow-[0_-6px_24px_rgba(15,23,42,.07)] backdrop-blur sm:hidden', isTyping && 'hidden')}
       style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
