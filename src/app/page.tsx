@@ -898,8 +898,10 @@ export default function Page() {
         {spellError && <p className="mb-4 rounded-xl bg-rose-50 p-3 text-sm text-rose-800" role="alert">{spellError}</p>}
         {spellCurrent ? <>
           <div className="rounded-2xl bg-slate-50 p-4 sm:p-6">
-            <p className="text-xs font-bold uppercase tracking-wider text-indigo-600">Traduce al francés</p>
-            <h3 className="mt-2 text-2xl font-bold text-slate-900">{spellCurrent.meaning_es}</h3>
+            <p className="text-xs font-bold uppercase tracking-wider text-indigo-600">Escribe la palabra que falta en francés</p>
+            <h3 className="mt-2 text-xl font-bold leading-relaxed text-slate-900 sm:text-2xl">
+              {spellCurrent.context_es?.trim() || spellCurrent.meaning_es}
+            </h3>
             <p className="mt-3 text-base leading-relaxed text-slate-600">{spellCurrent.context_fr}</p>
           </div>
           <form onSubmit={submitSpelling} className="mt-5 space-y-3">
