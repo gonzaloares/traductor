@@ -180,13 +180,13 @@ function FeedbackPanel({ feedback, userAnswer, onNext }: {
               <span className="break-all font-semibold text-rose-700 line-through decoration-rose-500">
                 {change.before.trim() || '∅'}
               </span>
-              <ArrowRight size={15} className="shrink-0 text-slate-400" />
+              <ArrowRight size={15} className="shrink-0 text-slate-500" />
               <span className="break-all font-bold text-emerald-700">{change.after.trim() || '∅'}</span>
             </span>)}
           {changeHighlights.length > 5 &&
             <span className="self-center text-xs text-slate-500">Y {changeHighlights.length - 5} cambios más</span>}
         </div>
-        <p className="mt-2 text-xs text-slate-400">Rojo: tu versión · Verde: propuesta de corrección. ∅ significa que se ha añadido o eliminado algo.</p>
+        <p className="mt-2 text-xs text-slate-500">Rojo: tu versión · Verde: propuesta de corrección. ∅ significa que se ha añadido o eliminado algo.</p>
       </div> : <p className="mt-4 rounded-lg bg-indigo-50 px-3 py-2 text-sm text-indigo-700">
         {feedback.status === 'perfect'
           ? 'Tu frase coincide con la corrección. ¡Muy bien!'
@@ -239,7 +239,7 @@ function Login({ onLogin, busy, error }: { onLogin: (pin: string) => Promise<voi
           {busy && <Loader2 size={18} className="animate-spin" />} Entrar
         </button>
       </form>
-      <p className="mt-6 flex items-center gap-2 text-xs text-slate-400"><ShieldCheck size={15} /> Sesión protegida durante 30 días; no se almacena el PIN</p>
+      <p className="mt-6 flex items-center gap-2 text-xs text-slate-500"><ShieldCheck size={15} /> Sesión protegida durante 30 días; no se almacena el PIN</p>
     </div>
   </main>
 }
@@ -267,6 +267,8 @@ export default function Page() {
   const [genCount, setGenCount] = useState(5)
   const [generating, setGenerating] = useState(false)
   const [notice, setNotice] = useState('')
+  const [isTyping, setIsTyping] = useState(false)
+  const [keyboardInset, setKeyboardInset] = useState(0)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const load = useCallback(async () => {
@@ -299,6 +301,25 @@ export default function Page() {
     const interval = window.setInterval(() => setNow(Date.now()), 60_000)
     return () => clearInterval(interval)
   }, [])
+
+  // La barra flotante se mantiene sobre el teclado en navegadores Android.
+  useEffect(() => {
+    if (!isTyping) return
+    const viewport = window.visualViewport
+    const updateInset = () => {
+      const inset = viewport ? window.innerHeight - viewport.height - viewport.offsetTop : 0
+      setKeyboardInset(Math.max(0, Math.round(inset)))
+    }
+    updateInset()
+    viewport?.addEventListener('resize', updateInset)
+    viewport?.addEventListener('scroll', updateInset)
+    window.addEventListener('resize', updateInset)
+    return () => {
+      viewport?.removeEventListener('resize', updateInset)
+      viewport?.removeEventListener('scroll', updateInset)
+      window.removeEventListener('resize', updateInset)
+    }
+  }, [isTyping])
 
   const login = async (pin: string) => {
     setAuthBusy(true)
@@ -401,32 +422,32 @@ export default function Page() {
   if (!authorized) return <Login onLogin={login} busy={authBusy} error={authError} />
 
   return <main className="mx-auto min-h-screen max-w-6xl px-4 pb-20 sm:px-6 lg:px-8">
-    <header className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200/70 py-5 sm:py-7">
-      <div className="flex items-center gap-3">
-        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-indigo-600 text-xl font-black text-white shadow-md shadow-indigo-200">P<span className="text-amber-300">.</span></div>
-        <div><div className="text-[22px] font-extrabold tracking-tight text-slate-900">parole<span className="text-indigo-600">.</span></div>
-          <p className="text-[11px] font-medium tracking-wide text-slate-400">FRANCÉS ACTIVO · A1—B2</p></div>
+    <header className="flex items-center justify-between gap-2 border-b border-slate-200/70 py-3 sm:gap-4 sm:py-7">
+      <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-indigo-600 sm:h-11 sm:w-11 sm:rounded-2xl text-xl font-black text-white shadow-md shadow-indigo-200">P<span className="text-amber-300">.</span></div>
+        <div><div className="text-[19px] font-extrabold tracking-tight text-slate-900 sm:text-[22px]">parole<span className="text-indigo-600">.</span></div>
+          <p className="hidden text-[11px] font-medium tracking-wide text-slate-500 sm:block">FRANCÉS ACTIVO · A1—B2</p></div>
       </div>
       <button type="button" onClick={() => { setGeneratorOpen(true); setNotice('') }}
-        className="flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-3 text-sm font-bold text-white shadow-lg shadow-indigo-100 transition hover:bg-indigo-700 sm:px-5">
+        className="flex shrink-0 items-center gap-1.5 rounded-xl bg-indigo-600 px-3 py-2.5 text-xs font-bold text-white shadow-lg shadow-indigo-100 transition hover:bg-indigo-700 sm:gap-2 sm:px-5 sm:py-3 sm:text-sm">
         <Sparkles size={17} /> <span className="hidden sm:inline">Generar nuevas frases con IA</span><span className="sm:hidden">Generar con IA</span>
       </button>
     </header>
 
-    <div className="mt-9 flex flex-wrap items-end justify-between gap-5">
+    <div className="mt-4 flex items-center justify-between gap-2 sm:mt-9 sm:flex-wrap sm:items-end sm:gap-5">
       <div>
-        <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-indigo-50 px-3 py-1.5 text-xs font-bold text-indigo-600">
+        <div className="mb-3 hidden items-center gap-2 rounded-full bg-indigo-50 sm:inline-flex px-3 py-1.5 text-xs font-bold text-indigo-600">
           <Star size={13} fill="currentColor" /> Un poco cada día, mucho francés
         </div>
-        <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 sm:text-4xl">
-          Bonjour, <span className="text-indigo-600">¡a practicar!</span>
+        <h1 className="text-[21px] font-extrabold tracking-tight text-slate-900 sm:text-4xl">
+          <span className="sm:hidden">¡A practicar!</span><span className="hidden sm:inline">Bonjour, <span className="text-indigo-600">¡a practicar!</span></span>
         </h1>
-        <p className="mt-2 text-sm leading-relaxed text-slate-500 sm:text-base">Traduce, recibe feedback y repasa justo cuando lo necesitas.</p>
+        <p className="mt-2 hidden text-sm leading-relaxed text-slate-600 sm:block sm:text-base">Traduce, recibe feedback y repasa justo cuando lo necesitas.</p>
       </div>
       <div className="flex items-center gap-2">
-        <label htmlFor="level-filter" className="text-sm font-semibold text-slate-500">Nivel</label>
+        <label htmlFor="level-filter" className="hidden text-sm font-semibold text-slate-600 sm:block">Nivel</label>
         <select id="level-filter" value={level} onChange={e => changeLevel(e.target.value as Filter)}
-          className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-800 shadow-sm">
+          className="rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-sm font-bold text-slate-800 shadow-sm sm:px-4 sm:py-2.5">
           {(['Todos', ...LEVELS] as const).map(v => <option key={v} value={v}>{v}</option>)}
         </select>
         <button type="button" onClick={() => void load()} disabled={loading} aria-label="Sincronizar" title="Sincronizar con la nube"
@@ -436,21 +457,21 @@ export default function Page() {
       </div>
     </div>
 
-    <div className="mt-7 grid grid-cols-3 gap-3 sm:gap-5">
-      <div className="soft-shadow rounded-2xl border border-slate-100 bg-white p-4 sm:p-5">
-        <div className="mb-3 flex items-center gap-2 text-slate-400"><Layers3 size={18} /><span className="hidden text-xs font-semibold sm:inline">Banco personal</span></div>
-        <div className="text-2xl font-extrabold text-slate-900 tabular sm:text-3xl">{filtered.length}</div>
-        <div className="mt-1 text-xs font-medium text-slate-500 sm:text-sm">Frases totales</div>
+    <div className="mt-3 grid grid-cols-3 gap-2 sm:mt-7 sm:gap-5">
+      <div className="soft-shadow rounded-xl border border-slate-100 bg-white p-2.5 sm:rounded-2xl sm:p-5">
+        <div className="mb-1 hidden items-center gap-2 text-slate-500 sm:mb-3 sm:flex"><Layers3 size={18} /><span className="hidden text-xs font-semibold sm:inline">Banco personal</span></div>
+        <div className="text-[22px] font-extrabold text-slate-900 tabular sm:text-3xl">{filtered.length}</div>
+        <div className="mt-0.5 text-[11px] font-semibold leading-tight text-slate-600 sm:mt-1 sm:text-sm">Frases totales</div>
       </div>
-      <div className="soft-shadow rounded-2xl border border-indigo-100 bg-indigo-600 p-4 text-white sm:p-5">
-        <div className="mb-3 flex items-center gap-2 text-indigo-200"><Clock3 size={18} /><span className="hidden text-xs font-semibold sm:inline">Tu repaso</span></div>
-        <div className="text-2xl font-extrabold tabular sm:text-3xl">{due.length}</div>
-        <div className="mt-1 text-xs font-medium text-indigo-100 sm:text-sm">Pendientes hoy</div>
+      <div className="soft-shadow rounded-xl border border-indigo-100 bg-indigo-600 p-2.5 text-white sm:rounded-2xl sm:p-5">
+        <div className="mb-1 hidden items-center gap-2 text-indigo-100 sm:mb-3 sm:flex"><Clock3 size={18} /><span className="hidden text-xs font-semibold sm:inline">Tu repaso</span></div>
+        <div className="text-[22px] font-extrabold tabular sm:text-3xl">{due.length}</div>
+        <div className="mt-0.5 text-[11px] font-semibold leading-tight text-indigo-50 sm:mt-1 sm:text-sm">Pendientes hoy</div>
       </div>
-      <div className="soft-shadow rounded-2xl border border-slate-100 bg-white p-4 sm:p-5">
-        <div className="mb-3 flex items-center gap-2 text-emerald-500"><CheckCircle2 size={18} /><span className="hidden text-xs font-semibold text-slate-400 sm:inline">¡Vas muy bien!</span></div>
-        <div className="text-2xl font-extrabold text-slate-900 tabular sm:text-3xl">{mastered}</div>
-        <div className="mt-1 text-xs font-medium text-slate-500 sm:text-sm">Dominadas (4–5)</div>
+      <div className="soft-shadow rounded-xl border border-slate-100 bg-white p-2.5 sm:rounded-2xl sm:p-5">
+        <div className="mb-1 hidden items-center gap-2 text-emerald-500 sm:mb-3 sm:flex"><CheckCircle2 size={18} /><span className="hidden text-xs font-semibold text-slate-500 sm:inline">¡Vas muy bien!</span></div>
+        <div className="text-[22px] font-extrabold text-slate-900 tabular sm:text-3xl">{mastered}</div>
+        <div className="mt-0.5 text-[11px] font-semibold leading-tight text-slate-600 sm:mt-1 sm:text-sm">Dominadas (4–5)</div>
       </div>
     </div>
 
@@ -462,21 +483,21 @@ export default function Page() {
       <span>{error}</span><button type="button" aria-label="Cerrar error" onClick={() => setError('')}><X size={17}/></button>
     </div>}
 
-    <nav className="mt-8 flex gap-2 border-b border-slate-200" aria-label="Secciones">
+    <nav className="mt-4 flex gap-2 border-b border-slate-200 sm:mt-8" aria-label="Secciones">
       <button type="button" onClick={() => setView('practice')}
-        className={cn('flex items-center gap-2 border-b-[3px] px-4 pb-3 pt-2 text-sm font-bold',
+        className={cn('flex items-center gap-2 border-b-[3px] px-3 pb-2 pt-2 text-sm font-bold sm:px-4 sm:pb-3',
           view === 'practice' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-800')}>
         <BookOpen size={18} /> Practicar
       </button>
       <button type="button" onClick={() => setView('bank')}
-        className={cn('flex items-center gap-2 border-b-[3px] px-4 pb-3 pt-2 text-sm font-bold',
+        className={cn('flex items-center gap-2 border-b-[3px] px-3 pb-2 pt-2 text-sm font-bold sm:px-4 sm:pb-3',
           view === 'bank' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-800')}>
         <Library size={18} /> Banco de frases
       </button>
     </nav>
 
-    {view === 'practice' ? <div className="mt-7 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_290px]">
-      <section className="soft-shadow min-w-0 rounded-[26px] border border-slate-100 bg-white p-5 sm:p-8">
+    {view === 'practice' ? <div className="mt-3 grid items-start gap-4 sm:mt-7 lg:grid-cols-[minmax(0,1fr)_290px] lg:gap-6">
+      <section className="soft-shadow min-w-0 rounded-[22px] border border-slate-100 bg-white p-4 sm:rounded-[26px] sm:p-8">
         {loading ? <div className="flex min-h-80 items-center justify-center gap-2 text-slate-500"><Loader2 className="animate-spin" /> Cargando frases...</div>
           : current ? <>
           <div className="flex flex-wrap items-center gap-2">
@@ -484,13 +505,13 @@ export default function Page() {
             <span className="max-w-full rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-600">{current.grammar_topic}</span>
             {new Date(current.next_review_at).getTime() > now && <span className="rounded-lg bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700">Repaso anticipado</span>}
           </div>
-          <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-5">
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3 sm:mt-5 sm:pb-5">
             <Mastery score={current.mastery_score} showLabel />
-            <span className="text-xs text-slate-400">{current.times_practiced} {current.times_practiced === 1 ? 'intento' : 'intentos'} previos</span>
+            <span className="text-xs text-slate-500">{current.times_practiced} {current.times_practiced === 1 ? 'intento' : 'intentos'} previos</span>
           </div>
 
-          <div className="mt-7">
-            <div className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-[.16em] text-indigo-600">
+          <div className="mt-4 sm:mt-7">
+            <div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-[.16em] text-indigo-600 sm:mb-3">
               <MessageCircle size={16} /> Traduce al francés
             </div>
             <h2 className="lesson-text text-[26px] leading-[1.35] font-medium tracking-tight text-slate-900 sm:text-[34px]">
@@ -498,21 +519,30 @@ export default function Page() {
             </h2>
           </div>
 
-          <div className="mt-9">
+          <div className="mt-5 sm:mt-9">
             <label htmlFor="translation" className="mb-2 block text-sm font-bold text-slate-700">Tu traducción</label>
             <textarea id="translation" ref={textareaRef} value={answer} onChange={e => setAnswer(e.target.value)}
-              onKeyDown={keyDown} rows={4} disabled={submitting || !!feedback}
+              onKeyDown={keyDown} onFocus={() => setIsTyping(true)} onBlur={() => setIsTyping(false)} rows={3} disabled={submitting || !!feedback}
               placeholder="Écris ta traduction ici..."
-              className="block min-h-36 w-full resize-y rounded-2xl border-2 border-slate-200 bg-slate-50/40 p-4 text-base leading-relaxed text-slate-900 placeholder:text-slate-400 focus:border-indigo-500 focus:bg-white focus:outline-none sm:text-lg" />
-            {!feedback && <div className="mt-3 flex flex-wrap gap-1.5" aria-label="Caracteres franceses">
+              className="block min-h-28 w-full resize-y rounded-2xl border-2 border-slate-200 bg-slate-50/40 p-3.5 text-base leading-relaxed text-slate-900 placeholder:text-slate-500 focus:border-indigo-500 focus:bg-white focus:outline-none sm:min-h-36 sm:p-4 sm:text-lg" />
+            {!feedback && <div className="mt-3 flex flex-wrap items-center justify-between gap-3 sm:mt-6">
+              <span className="hidden items-center gap-1.5 text-xs text-slate-500 sm:flex"><Keyboard size={16} /> Ctrl/⌘ + Enter para corregir</span>
+              <button type="button" disabled={!answer.trim() || submitting} onClick={() => void correct()}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-8 py-3.5 text-sm font-bold text-white shadow-lg shadow-indigo-100 transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-40 sm:ml-auto sm:w-auto">
+                {submitting ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
+                {submitting ? 'Corrigiendo...' : 'Corregir traducción'} <ArrowRight size={18} />
+              </button>
+            </div>}
+            {!feedback && <div className="mt-3 flex flex-wrap gap-1.5 sm:mt-4" aria-label="Caracteres franceses">
               {CHARACTERS.map(ch => <button type="button" key={ch} onClick={() => insertCharacter(ch)}
                 disabled={submitting} aria-label={'Insertar ' + ch}
                 className="flex h-9 min-w-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-2 text-sm font-bold text-slate-700 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-600 disabled:opacity-50">{ch}</button>)}
             </div>}
-            {!feedback && <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
-              <span className="hidden items-center gap-1.5 text-xs text-slate-400 sm:flex"><Keyboard size={16} /> Ctrl/⌘ + Enter para corregir</span>
-              <button type="button" disabled={!answer.trim() || submitting} onClick={() => void correct()}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-8 py-3.5 text-sm font-bold text-white shadow-lg shadow-indigo-100 transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-40 sm:ml-auto sm:w-auto">
+            {isTyping && !feedback && answer.trim() && <div className="fixed inset-x-0 z-40 border-t border-slate-200 bg-white/95 px-4 py-2.5 shadow-lg backdrop-blur sm:hidden"
+              style={{ bottom: keyboardInset }}>
+              <button type="button" disabled={submitting} onPointerDown={event => event.preventDefault()}
+                onClick={() => { textareaRef.current?.blur(); void correct() }}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 py-3 font-bold text-white disabled:opacity-50">
                 {submitting ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
                 {submitting ? 'Corrigiendo...' : 'Corregir traducción'} <ArrowRight size={18} />
               </button>
@@ -534,7 +564,7 @@ export default function Page() {
         </div>}
       </section>
 
-      <aside className="space-y-5">
+      <aside className="hidden space-y-5 lg:block">
         <div className="rounded-[24px] border border-indigo-100 bg-indigo-50/70 p-6">
           <div className="mb-4 inline-flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-100 text-indigo-600"><GraduationCap size={23} /></div>
           <h2 className="text-lg font-extrabold text-slate-900">Así se aprende</h2>
@@ -554,12 +584,20 @@ export default function Page() {
           <p className="mt-2 text-xs font-semibold text-slate-500">{filtered.length ? Math.round(mastered / filtered.length * 100) : 0}% de frases dominadas</p>
         </div>
       </aside>
+      <details className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 lg:hidden">
+        <summary className="cursor-pointer font-semibold text-indigo-700">Cómo funciona Parole y la repetición espaciada</summary>
+        <div className="mt-3 space-y-2 leading-relaxed text-slate-700">
+          <p>Traduce sin consultar la solución, revisa los errores y escucha la frase corregida.</p>
+          <p>El repaso se programa tras 1, 3, 7, 14 o 30 días si aciertas; 12 horas ante errores leves y 10 minutos ante errores importantes.</p>
+          <p className="font-semibold">{filtered.length ? Math.round(mastered / filtered.length * 100) : 0}% de frases dominadas.</p>
+        </div>
+      </details>
     </div> : <section className="soft-shadow mt-7 overflow-hidden rounded-[26px] border border-slate-100 bg-white">
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 p-5 sm:p-7">
         <div><h2 className="text-xl font-extrabold text-slate-900">Tu banco de frases</h2>
           <p className="mt-1 text-sm text-slate-500">Consulta cada explicación y el próximo repaso.</p></div>
         <div className="relative w-full sm:w-72">
-          <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar frases o temas..."
             aria-label="Buscar frases" className="w-full rounded-xl border border-slate-200 py-3 pl-10 pr-4 text-sm outline-none focus:border-indigo-400"/>
         </div>
@@ -572,7 +610,7 @@ export default function Page() {
               <div className="min-w-0 flex-1">
                 <div className="mb-2 flex flex-wrap items-center gap-2">
                   <span className={cn('rounded-md border px-2 py-1 text-[11px] font-extrabold', levelStyle(s.level))}>{s.level}</span>
-                  <span className="text-xs font-semibold text-slate-400">{s.grammar_topic}</span>
+                  <span className="text-xs font-semibold text-slate-500">{s.grammar_topic}</span>
                   {s.source === 'ai_generated' && <span title="Generada con IA" className="text-xs text-indigo-500"><Sparkles size={13} /></span>}
                 </div>
                 <h3 className="font-bold leading-relaxed text-slate-900">{s.spanish_text}</h3>
@@ -587,13 +625,13 @@ export default function Page() {
             <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-3">
               <Mastery score={s.mastery_score} showLabel />
               <span className="flex items-center gap-1.5 text-xs text-slate-500"><CalendarDays size={14} />{whenReview(s.next_review_at, now)}</span>
-              <span className="text-xs text-slate-400">{s.times_practiced} intentos</span>
+              <span className="text-xs text-slate-500">{s.times_practiced} intentos</span>
             </div>
           </article>)}
         </div>}
     </section>}
 
-    <footer className="mt-10 flex flex-wrap justify-center gap-2 text-center text-xs text-slate-400">
+    <footer className="mt-10 flex flex-wrap justify-center gap-2 text-center text-xs text-slate-500">
       <span>Parole · aprende francés con práctica deliberada</span><span>·</span><span>Progreso sincronizado en Supabase</span>
     </footer>
 
@@ -602,7 +640,7 @@ export default function Page() {
         <div className="flex items-start justify-between gap-3">
           <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-100 text-indigo-600"><WandSparkles size={23} /></div>
           <button type="button" onClick={() => setGeneratorOpen(false)} disabled={generating} aria-label="Cerrar"
-            className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"><X size={21} /></button>
+            className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><X size={21} /></button>
         </div>
         <h2 id="generator-title" className="mt-5 text-2xl font-extrabold text-slate-900">Nuevas frases con IA</h2>
         <p className="mt-2 text-sm leading-relaxed text-slate-500">Amplía tu banco con frases adaptadas al nivel y a la gramática que quieres reforzar.</p>
@@ -630,7 +668,7 @@ export default function Page() {
             {generating ? 'Creando frases...' : 'Generar y empezar a practicar'}
           </button>
         </form>
-        <p className="mt-4 text-center text-xs text-slate-400">Las frases generadas se guardan y sincronizan automáticamente.</p>
+        <p className="mt-4 text-center text-xs text-slate-500">Las frases generadas se guardan y sincronizan automáticamente.</p>
       </div>
     </div>}
   </main>
