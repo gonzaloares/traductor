@@ -118,10 +118,11 @@ function ComparisonText({ parts, side }: { parts: DiffPart[]; side: 'original' |
   </span>
 }
 
-function FeedbackPanel({ feedback, userAnswer, sentence, onNext, onRetry, onFavorite, isFavorite }: {
+function FeedbackPanel({ feedback, userAnswer, sentence, previousMastery, onNext, onRetry, onFavorite, isFavorite }: {
   feedback: EvaluationResponse
   userAnswer: string
   sentence: Sentence
+  previousMastery: number | null
   onNext: () => void
   onRetry: () => void
   onFavorite: () => void
@@ -192,6 +193,13 @@ function FeedbackPanel({ feedback, userAnswer, sentence, onNext, onRetry, onFavo
   const normalized = (value: string) => value.normalize('NFC')
     .replace(/\s+/g, ' ').trim().replace(/[.!?…]+$/u, '').trim().toLocaleLowerCase('fr')
   const hasDistinctAlternative = normalized(feedback.corrected_sentence) !== normalized(feedback.natural_alternative)
+  const masteryScore = feedback.sentence.mastery_score
+  const masteryChange = previousMastery === null ? null : masteryScore - previousMastery
+  const masteryLabel = masteryScore === 5 ? 'Dominio máximo' : masteryScore >= 4 ? 'Dominada' : 'En aprendizaje'
+  const masteryChangeLabel = masteryChange === null ? 'Resultado guardado'
+    : masteryChange > 0 ? 'Avanzas de ' + previousMastery + '/5 a ' + masteryScore + '/5'
+      : masteryChange < 0 ? 'Bajas de ' + previousMastery + '/5 a ' + masteryScore + '/5'
+        : 'Sin cambios: sigues en ' + masteryScore + '/5'
   return <section className="animate-pop-in mt-7 space-y-5 border-t border-slate-100 pt-7" aria-live="polite">
     <div className={cn('flex items-center justify-between gap-3 rounded-2xl border p-4', info.cls)}>
       <div className="flex items-center gap-3"><StatusIcon size={22} /><span className="font-bold">{info.label}</span></div>
@@ -200,6 +208,37 @@ function FeedbackPanel({ feedback, userAnswer, sentence, onNext, onRetry, onFavo
     {(feedback.orthographySaved ?? 0) > 0 && <p className="rounded-xl bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-700">
       {feedback.orthographySaved} {feedback.orthographySaved === 1 ? 'palabra añadida o reforzada' : 'palabras añadidas o reforzadas'} para Repasar → Ortografía.
     </p>}
+    <div className="rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4 sm:p-5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h3 className="font-extrabold text-slate-900">Dominio de esta frase</h3>
+          <p className="mt-0.5 text-xs text-slate-500">Se considera dominada al alcanzar 4/5.</p>
+        </div>
+        <span className={cn('rounded-lg px-3 py-1.5 text-sm font-extrabold tabular',
+          masteryScore >= 4 ? 'bg-emerald-100 text-emerald-800' : 'bg-indigo-100 text-indigo-800')}>
+          {masteryScore}/5 · {masteryLabel}
+        </span>
+      </div>
+      <div className="mt-3 flex gap-1.5" role="img" aria-label={'Dominio ' + masteryScore + ' de 5'}>
+        {[1, 2, 3, 4, 5].map(step => <span key={step} className={cn('h-2.5 min-w-0 flex-1 rounded-full',
+          step <= masteryScore ? 'bg-indigo-500' : 'bg-slate-200')} />)}
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
+        <span className={cn('font-semibold',
+          masteryChange !== null && masteryChange > 0 ? 'text-emerald-700'
+            : masteryChange !== null && masteryChange < 0 ? 'text-rose-700' : 'text-slate-700')}>
+          {masteryChangeLabel}
+        </span>
+        <span className="inline-flex items-center gap-1.5 text-slate-600"
+          title={readableDate(feedback.sentence.next_review_at)}>
+          <CalendarDays size={16} className="shrink-0 text-indigo-500" />
+          Próximo repaso: {whenReview(feedback.sentence.next_review_at, Date.now())}
+        </span>
+      </div>
+      <p className="mt-2 text-xs leading-relaxed text-slate-500">
+        Perfecto: +1 · Casi perfecto: sin cambios · Error importante: −1. Las frases dominadas siguen repasándose.
+      </p>
+    </div>
     <div className="grid grid-cols-3 gap-2" aria-label="Acciones de la corrección">
       <button type="button" onClick={onRetry} className="flex min-h-12 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-1 text-xs font-bold text-slate-700 hover:bg-slate-50 sm:text-sm">
         <RotateCcw size={17} /> Reintentar
@@ -397,6 +436,7 @@ export default function Page() {
   const [showUpcoming, setShowUpcoming] = useState(false)
   const [answer, setAnswer] = useState('')
   const [feedback, setFeedback] = useState<EvaluationResponse | null>(null)
+  const [previousMastery, setPreviousMastery] = useState<number | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [search, setSearch] = useState('')
   const [generatorOpen, setGeneratorOpen] = useState(false)
@@ -666,6 +706,7 @@ export default function Page() {
           practiceId: practiceIdRef.current
         })
       })
+      setPreviousMastery(current.mastery_score)
       setFeedback(result)
       setSentences(previous => previous.map(s => s.id === result.sentence.id ? result.sentence : s))
       if (result.scoreRecord) {
@@ -690,12 +731,12 @@ export default function Page() {
         && (showUpcoming || new Date(s.next_review_at).getTime() <= Date.now()))
     if (view === 'review' && current) setReviewSeen(prev => [...prev, current.id])
     setActiveId(options[0]?.id ?? null)
-    setAnswer(''); setFeedback(null); setShowHint(false); setError('')
+    setAnswer(''); setFeedback(null); setPreviousMastery(null); setShowHint(false); setError('')
     if (options.length === 0 && view !== 'review') setShowUpcoming(false)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
   const retry = () => {
-    setFeedback(null); setAnswer(''); setShowHint(false); setError('')
+    setFeedback(null); setPreviousMastery(null); setAnswer(''); setShowHint(false); setError('')
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
   useEffect(() => {
@@ -1139,7 +1180,7 @@ export default function Page() {
                 {submitting ? 'Corrigiendo...' : 'Enviar'}
               </button>
             </div>}
-          </div> : <FeedbackPanel feedback={feedback} userAnswer={answer} sentence={current} onNext={next}
+          </div> : <FeedbackPanel feedback={feedback} userAnswer={answer} sentence={current} previousMastery={previousMastery} onNext={next}
             onRetry={retry} onFavorite={() => toggleFavorite(current.id)} isFavorite={favoriteIds.includes(current.id)} />}
         </> : <div className="flex min-h-[380px] flex-col items-center justify-center text-center">
           <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600"><CheckCircle2 size={33} /></div>
