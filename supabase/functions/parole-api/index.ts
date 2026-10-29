@@ -24,7 +24,7 @@ const EVALUATOR_PROMPT = "Eres un profesor nativo de francés experto en enseña
   "- \`natural_alternative\`: cómo lo diría un francés nativo hoy en día de forma muy natural.\n" +
   "- \`grammar_explanation_es\`: explicación breve, didáctica y directa en español de los errores cometidos o de por qué está bien.\\n" +
   "- `orthography_errors`: array de 0 a 3 objetos { \"written\": palabra escrita con falta, \"correct\": la MISMA palabra con ortografía correcta, \"meaning_es\": traducción al español bien escrita y contextualizada, respetando EXACTAMENTE la forma usada en la frase española (si es un verbo conjugado, no confundas costa con cuesta) }. SOLO faltas claras de letras, tildes o consonantes duplicadas; no incluyas errores de gramática, conjugación, género, plural, elección de otra palabra, espacios, puntuación ni variantes correctas. Si dudas, usa []. Nunca inventes errores.\\n" +
-  "Prioridad: la frase española completa determina el significado. Conserva expresamente personas, parentescos, lugares, objetos, cantidades y demás información en las dos versiones francesas. Por ejemplo, «a mi hermana» no se puede omitir sustituyéndolo solo por «lui» sin contexto. No dupliques complementos sin una construcción correcta. La traducción de referencia es orientativa y puede contener errores; admite otras traducciones fieles y correctas. Si no existe una reformulación verdaderamente más natural que conserve toda la información, natural_alternative debe coincidir con corrected_sentence. Adapta las explicaciones al nivel indicado: pedagógicas y sencillas en A1, claras y detalladas para C1-C2."
+  "Prioridad: la frase española completa determina el significado. Conserva expresamente personas, parentescos, lugares, objetos, cantidades y demás información en las dos versiones francesas. Por ejemplo, «a mi hermana» no se puede omitir sustituyéndolo solo por «lui» sin contexto. No dupliques complementos sin una construcción correcta. La traducción de referencia es orientativa y puede contener errores; admite otras traducciones fieles y correctas. Si no existe una reformulación verdaderamente más natural que conserve toda la información, natural_alternative debe coincidir con corrected_sentence. Adapta las explicaciones al nivel indicado: pedagógicas y sencillas en A1, claras y detalladas para C1-C2. ACCESIBILIDAD: si el estudiante escribe oe en lugar de la ligadura œ en una palabra francesa (soeur/sœur, coeur/cœur, oeuf/œuf, oeuvre/œuvre), considéralo equivalente, sin restar puntos, sin clasificarlo como error ortográfico y sin añadirlo a orthography_errors. En la corrección muestra la grafía normativa œ."
 
 function allowedOrigin(origin: string | null): boolean {
   return !origin || origin === 'https://gonzaloares.github.io' ||
@@ -221,6 +221,25 @@ const UUID_PATTERN = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/
 function wordKey(value: string): string {
   return value.normalize('NFC').trim().toLocaleLowerCase('fr')
 }
+// The ligature is recommended for display, but oe is an accepted keyboard fallback.
+// Unlike stripping accents, this ONLY folds œ to oe.
+function ligatureKey(value: string): string {
+  return wordKey(value).replaceAll('œ', 'oe')
+}
+function canonicalizeLigatures(answer: string, reference: string): string {
+  const canonical = new Map<string, string>()
+  for (const token of reference.match(/\p{L}+/gu) ?? []) {
+    if (/[œŒ]/u.test(token)) canonical.set(ligatureKey(token), wordKey(token))
+  }
+  return answer.replace(/\p{L}+/gu, (token) => {
+    const replacement = canonical.get(ligatureKey(token))
+    if (!replacement || !/oe/i.test(token) || /[œŒ]/u.test(token)) return token
+    if (token === token.toLocaleUpperCase('fr')) return replacement.toLocaleUpperCase('fr')
+    return token[0] === token[0].toLocaleUpperCase('fr')
+      ? replacement[0].toLocaleUpperCase('fr') + replacement.slice(1)
+      : replacement
+  })
+}
 function tokenExists(sentence: string, word: string): boolean {
   return sentence.normalize('NFC').toLocaleLowerCase('fr')
     .split(/[^\p{L}]+/u).includes(wordKey(word))
@@ -256,7 +275,7 @@ async function recordOrthography(evaluation: Record<string, unknown>, level: Lev
     const meaning = row.meaning_es.trim()
     const key = wordKey(correct)
     if (!/^\p{L}{2,40}$/u.test(written) || !/^\p{L}{2,40}$/u.test(correct) ||
-        key === wordKey(written) || seen.has(key) ||
+        ligatureKey(correct) === ligatureKey(written) || seen.has(key) ||
         meaning.length < 2 || meaning.length > 80 ||
         !tokenExists(answer, written) || !tokenExists(corrected, correct)) continue
     const context = blankContext(corrected, correct)
@@ -301,7 +320,7 @@ async function reviewOrthography(body: Record<string, unknown>): Promise<Record<
   const word = found[0] as OrthographyWord
   if (word.state !== 'active') return { error: 'Esta palabra está descartada', statusCode: 409 }
   const given = wordKey(body.answer).replace(/[.!?…]+$/u, '')
-  const correct = given === wordKey(word.correct_word)
+  const correct = ligatureKey(given) === ligatureKey(word.correct_word)
   const mastery = correct ? Math.min(word.mastery_score + 1, 5) : 0
   const days = [0, 1, 3, 7, 14, 30][mastery]
   const next = new Date(Date.now() + (correct ? days * 86_400_000 : 10 * 60_000)).toISOString()
@@ -359,7 +378,7 @@ async function evaluate(body: Record<string, unknown>): Promise<Record<string, u
     referenceFrench: current.reference_french,
     level: current.level,
     grammarTopic: current.grammar_topic,
-    userAnswer: body.userAnswer.trim()
+    userAnswer: canonicalizeLigatures(body.userAnswer.trim() as string, current.reference_french)
   }, 0.2)
   if (!validEvaluation(evaluation)) throw new Error('La IA ha devuelto una evaluación incompleta')
   const score = evaluation.status === 'perfect' ? Math.min(current.mastery_score + 1, 5)
