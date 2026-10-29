@@ -305,6 +305,7 @@ export default function Page() {
   const [keyboardInset, setKeyboardInset] = useState(0)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const enterAdvanceLock = useRef(false)
+  const focusAfterNext = useRef(false)
   const practiceIdRef = useRef<string | null>(null)
 
   const load = useCallback(async () => {
@@ -497,6 +498,7 @@ export default function Page() {
     finally { setSubmitting(false) }
   }
   const next = () => {
+    focusAfterNext.current = window.matchMedia('(pointer: fine)').matches
     practiceIdRef.current = null
     const options = view === 'review'
       ? reviewPool.filter(s => s.id !== current?.id)
@@ -512,6 +514,12 @@ export default function Page() {
     setFeedback(null); setAnswer(''); setShowHint(false); setError('')
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
+  useEffect(() => {
+    if (!feedback && focusAfterNext.current) {
+      textareaRef.current?.focus()
+      focusAfterNext.current = false
+    }
+  }, [feedback, activeId, view])
   const keyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key !== 'Enter' || event.repeat || event.nativeEvent.isComposing ||
         event.nativeEvent.keyCode === 229 || !window.matchMedia('(pointer: fine)').matches) return
