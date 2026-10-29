@@ -416,7 +416,7 @@ export default function Page() {
       setReviewSeen([]); setReviewWeak(false)
     }
     setView(target)
-    window.scrollTo({ top: 0, behavior: 'instant' })
+    window.scrollTo({ top: 0, behavior: 'auto' })
   }
 
   const changeLevel = (value: Filter) => {
@@ -631,7 +631,6 @@ export default function Page() {
         </button>
         <p className="w-full text-xs text-slate-500">Las dificultades incluyen frases practicadas con dominio inferior a 4/5; pueden repasarse antes de tiempo.</p>
       </div>}
-       <div className="mt-3 grid items-start gap-4 sm:mt-7 lg:grid-cols-[minmax(0,1fr)_290px] lg:gap-6">
       <section className="soft-shadow min-w-0 rounded-[22px] border border-slate-100 bg-white p-4 sm:rounded-[26px] sm:p-8">
         {loading ? <div className="flex min-h-80 items-center justify-center gap-2 text-slate-500"><Loader2 className="animate-spin" /> Cargando frases...</div>
           : current ? <>
