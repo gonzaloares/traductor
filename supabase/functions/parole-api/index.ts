@@ -14,6 +14,8 @@ type Evaluation = {
   status: Status; score: number; corrected_sentence: string;
   natural_alternative: string; grammar_explanation_es: string
 }
+import { createMiniExams } from './mini-exams.ts'
+
 const SESSION_AGE_MS = 30 * 24 * 60 * 60 * 1000
 const encoder = new TextEncoder()
 const REVIEW_DAYS = [0, 1, 3, 7, 14, 30]
@@ -527,13 +529,15 @@ async function askTeacher(body: Record<string, unknown>): Promise<Record<string,
   return { answer: result.answer.trim() }
 }
 
+const miniExams = createMiniExams(db, openAI, () => env('OPENAI_API_KEY'))
+
 Deno.serve(async (request: Request): Promise<Response> => {
   if (!allowedOrigin(request.headers.get('origin'))) {
     return reply(request, { error: 'Origen no permitido' }, 403)
   }
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: headers(request) })
   const action = new URL(request.url).searchParams.get('action')
-  if (!['auth', 'sentences', 'evaluate', 'generate-batch', 'scores', 'orthography', 'orthography-review', 'orthography-status', 'teacher-chat'].includes(action ?? '')) {
+  if (!['auth', 'sentences', 'evaluate', 'generate-batch', 'scores', 'orthography', 'orthography-review', 'orthography-status', 'teacher-chat', 'mini-exam-start', 'mini-exam-history', 'mini-exam-finish', 'mini-exam-transcribe'].includes(action ?? '')) {
     return reply(request, { error: 'Ruta no encontrada' }, 404)
   }
   try {
@@ -572,6 +576,19 @@ Deno.serve(async (request: Request): Promise<Response> => {
     }
     if (action === 'orthography-status' && request.method === 'POST') {
       const result = await setOrthographyState(await requestJSON(request))
+      return reply(request, result, typeof result.statusCode === 'number' ? result.statusCode : 200)
+    }
+    if (action === 'mini-exam-history' && request.method === 'GET') return reply(request, await miniExams.history())
+    if (action === 'mini-exam-start' && request.method === 'POST') {
+      const result = await miniExams.start(await requestJSON(request))
+      return reply(request, result, typeof result.statusCode === 'number' ? result.statusCode : 200)
+    }
+    if (action === 'mini-exam-finish' && request.method === 'POST') {
+      const result = await miniExams.finish(await requestJSON(request))
+      return reply(request, result, typeof result.statusCode === 'number' ? result.statusCode : 200)
+    }
+    if (action === 'mini-exam-transcribe' && request.method === 'POST') {
+      const result = await miniExams.transcribe(await requestJSON(request))
       return reply(request, result, typeof result.statusCode === 'number' ? result.statusCode : 200)
     }
     if (action === 'teacher-chat' && request.method === 'POST') {
