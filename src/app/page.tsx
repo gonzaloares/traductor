@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import {
   ArrowRight, BookOpen, Check, CheckCircle2, ChevronRight, Clock3, GraduationCap,
+  Send, ChevronDown,
   Keyboard, Layers3, Library, Lightbulb, Loader2, LockKeyhole, MessageCircle,
   Plus, RefreshCw, RotateCcw, Search, ShieldCheck, Sparkles, Volume2, WandSparkles,
   X, XCircle, AlertTriangle, Star, CalendarDays, Home, BarChart3, Bookmark
@@ -164,14 +165,67 @@ function ComparisonText({ parts, side }: { parts: DiffPart[]; side: 'original' |
   </span>
 }
 
-function FeedbackPanel({ feedback, userAnswer, onNext, onRetry, onFavorite, isFavorite }: {
+function FeedbackPanel({ feedback, userAnswer, sentence, onNext, onRetry, onFavorite, isFavorite }: {
   feedback: EvaluationResponse
   userAnswer: string
+  sentence: Sentence
   onNext: () => void
   onRetry: () => void
   onFavorite: () => void
   isFavorite: boolean
 }) {
+  const [teacherOpen, setTeacherOpen] = useState(false)
+  const [teacherQuestion, setTeacherQuestion] = useState('')
+  const [teacherMessages, setTeacherMessages] = useState<{ role: 'user' | 'assistant'; content: string }[]>([])
+  const [teacherBusy, setTeacherBusy] = useState(false)
+  const [teacherError, setTeacherError] = useState('')
+  const teacherInputRef = useRef<HTMLTextAreaElement>(null)
+  const teacherScrollRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (teacherOpen) teacherInputRef.current?.focus()
+  }, [teacherOpen])
+  useEffect(() => {
+    if (teacherScrollRef.current) {
+      teacherScrollRef.current.scrollTop = teacherScrollRef.current.scrollHeight
+    }
+  }, [teacherMessages, teacherBusy])
+
+  const sendTeacherQuestion = async () => {
+    const question = teacherQuestion.trim()
+    if (!question || teacherBusy) return
+    const previous = teacherMessages.slice(-10)
+    setTeacherMessages(messages => [...messages, { role: 'user', content: question }])
+    setTeacherQuestion('')
+    setTeacherError('')
+    setTeacherBusy(true)
+    try {
+      const result = await api<{ answer: string }>('/api/teacher-chat', {
+        method: 'POST',
+        body: JSON.stringify({
+          sentenceId: sentence.id,
+          userAnswer,
+          feedback: {
+            status: feedback.status,
+            score: feedback.score,
+            corrected_sentence: feedback.corrected_sentence,
+            natural_alternative: feedback.natural_alternative,
+            grammar_explanation_es: feedback.grammar_explanation_es
+          },
+          history: previous,
+          question
+        })
+      })
+      setTeacherMessages(messages => [...messages, { role: 'assistant', content: result.answer }])
+    } catch (e) {
+      setTeacherMessages(messages => messages.slice(0, -1))
+      setTeacherQuestion(question)
+      setTeacherError(e instanceof Error ? e.message : 'No se ha podido consultar al profesor.')
+    } finally {
+      setTeacherBusy(false)
+    }
+  }
+
   const status: Record<Status, { label: string; cls: string; icon: typeof CheckCircle2 }> = {
     perfect: { label: '¡Perfecto!', cls: 'bg-emerald-50 text-emerald-800 border-emerald-200', icon: CheckCircle2 },
     minor_errors: { label: '¡Casi perfecto!', cls: 'bg-amber-50 text-amber-800 border-amber-200', icon: AlertTriangle },
@@ -272,6 +326,62 @@ function FeedbackPanel({ feedback, userAnswer, onNext, onRetry, onFavorite, isFa
       <Lightbulb size={20} className="mt-1 shrink-0 text-amber-500" />
       <div><h3 className="mb-1 font-bold text-slate-900">Explicación gramatical</h3>
         <p className="leading-relaxed text-slate-600">{feedback.grammar_explanation_es}</p></div>
+    </div>
+    <div className="rounded-2xl border border-indigo-100 bg-white p-4 sm:p-5">
+      <button type="button" onClick={() => setTeacherOpen(open => !open)}
+        aria-expanded={teacherOpen} aria-controls="teacher-chat"
+        className="flex w-full items-center justify-between gap-3 text-left">
+        <span className="flex items-center gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
+            <GraduationCap size={21} />
+          </span>
+          <span>
+            <span className="block font-extrabold text-slate-900">Preguntar al profesor</span>
+            <span className="block text-xs text-slate-500">Aclara tus dudas sobre esta frase con IA</span>
+          </span>
+        </span>
+        <ChevronDown size={19} className={cn('shrink-0 text-slate-500 transition-transform', teacherOpen && 'rotate-180')} />
+      </button>
+      {teacherOpen && <div id="teacher-chat" className="mt-4 space-y-3 border-t border-slate-100 pt-4">
+        {teacherMessages.length === 0 && <p className="rounded-xl bg-indigo-50 px-3 py-3 text-sm leading-relaxed text-indigo-800">
+          Puedes preguntarme por una regla gramatical, una alternativa o por qué se ha considerado incorrecta tu respuesta.
+        </p>}
+        {teacherMessages.length > 0 && <div ref={teacherScrollRef} className="max-h-80 space-y-3 overflow-y-auto pr-1" role="log" aria-label="Conversación con el profesor">
+          {teacherMessages.map((message, index) =>
+            <div key={index} className={cn('flex', message.role === 'user' ? 'justify-end' : 'justify-start')}>
+              <div className={cn('max-w-[93%] whitespace-pre-wrap break-words rounded-2xl px-3.5 py-3 text-sm leading-relaxed sm:max-w-[88%]',
+                message.role === 'user' ? 'rounded-br-sm bg-indigo-600 text-white' : 'rounded-bl-sm bg-slate-100 text-slate-800')}>
+                {message.content}
+              </div>
+            </div>)}
+        </div>}
+        {teacherBusy && <p className="flex items-center gap-2 text-sm text-slate-500" role="status">
+          <Loader2 size={16} className="animate-spin" /> El profesor está respondiendo...
+        </p>}
+        {teacherError && <p className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-800" role="alert">{teacherError}</p>}
+        <form onSubmit={event => { event.preventDefault(); void sendTeacherQuestion() }} className="space-y-2">
+          <label htmlFor="teacher-question" className="sr-only">Tu pregunta al profesor de francés</label>
+          <textarea id="teacher-question" ref={teacherInputRef} rows={2} maxLength={800}
+            value={teacherQuestion} onChange={event => setTeacherQuestion(event.target.value)}
+            onKeyDown={event => {
+              if (event.key === 'Enter' && !event.shiftKey && !event.altKey && !event.ctrlKey &&
+                  !event.metaKey && !event.nativeEvent.isComposing && !event.repeat &&
+                  window.matchMedia('(pointer: fine)').matches) {
+                event.preventDefault()
+                void sendTeacherQuestion()
+              }
+            }}
+            disabled={teacherBusy} placeholder="¿Qué duda tienes sobre esta frase?"
+            className="block min-h-20 w-full resize-y rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm leading-relaxed text-slate-900 placeholder:text-slate-500 focus:border-indigo-500 focus:bg-white focus:outline-none disabled:opacity-60" />
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-xs text-slate-500">Solo esta frase · No modifica tu puntuación</span>
+            <button type="submit" disabled={teacherBusy || teacherQuestion.trim().length === 0}
+              className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-bold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-40">
+              <Send size={16} /> Enviar pregunta
+            </button>
+          </div>
+        </form>
+      </div>}
     </div>
     <button type="button" onClick={onNext}
       className="flex w-full items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-6 py-4 font-bold text-white shadow-lg shadow-indigo-200 transition hover:bg-indigo-700">
@@ -1073,7 +1183,7 @@ export default function Page() {
                 {submitting ? 'Corrigiendo...' : 'Enviar'}
               </button>
             </div>}
-          </div> : <FeedbackPanel feedback={feedback} userAnswer={answer} onNext={next}
+          </div> : <FeedbackPanel feedback={feedback} userAnswer={answer} sentence={current} onNext={next}
             onRetry={retry} onFavorite={() => toggleFavorite(current.id)} isFavorite={favoriteIds.includes(current.id)} />}
         </> : <div className="flex min-h-[380px] flex-col items-center justify-center text-center">
           <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600"><CheckCircle2 size={33} /></div>
