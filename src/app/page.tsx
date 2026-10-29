@@ -12,8 +12,9 @@ import { cn } from '@/lib/utils'
 import { LEVELS, type EvaluationResponse, type Level, type Sentence, type Status, type PracticeScore, type OrthographyWord, type OrthographyReviewResponse } from '@/lib/types'
 import { compareTranslations, type DiffPart } from '@/lib/translation-diff'
 import { ALL_GRAMMAR_TOPICS, CUSTOM_GRAMMAR_TOPIC, topicsForLevel, selectedGrammarTopic } from '@/lib/grammar-topics'
+import { MiniExam, ExamHistory } from '@/components/MiniExam'
 
-type View = 'home' | 'practice' | 'review' | 'bank' | 'progress'
+type View = 'home' | 'practice' | 'review' | 'bank' | 'progress' | 'exam'
 type Filter = Level | 'Todos'
 const NAV_ITEMS = [
   { view: 'home', label: 'Inicio', icon: Home },
@@ -824,7 +825,7 @@ export default function Page() {
         <div><div className="text-[19px] font-extrabold tracking-tight text-slate-900 sm:text-[22px]">parole<span className="text-indigo-600">.</span></div>
           <p className="hidden text-[11px] font-medium tracking-wide text-slate-500 sm:block">FRANCÉS ACTIVO · A1—C2</p></div>
       </div>
-      {view === 'practice' ? <button type="button" onClick={() => void load()} disabled={loading} aria-label="Sincronizar" title="Sincronizar con la nube"
+      {view === 'exam' ? <span className="text-sm font-bold text-indigo-700">Mini-examen</span> : view === 'practice' ? <button type="button" onClick={() => void load()} disabled={loading} aria-label="Sincronizar" title="Sincronizar con la nube"
           className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500">
           <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
         </button> : <button type="button" onClick={() => { setGeneratorOpen(true); setNotice('') }}
@@ -841,7 +842,7 @@ export default function Page() {
       <span>{error}</span><button type="button" aria-label="Cerrar error" onClick={() => setError('')}><X size={17}/></button>
     </div>}
 
-    <nav className="mt-4 hidden gap-1 border-b border-slate-200 sm:mt-8 sm:flex" aria-label="Secciones">
+    {view !== 'exam' && <nav className="mt-4 hidden gap-1 border-b border-slate-200 sm:mt-8 sm:flex" aria-label="Secciones">
       {NAV_ITEMS.map(item => {
         const Icon = item.icon
         return <button key={item.view} type="button" onClick={() => navigate(item.view)}
@@ -851,9 +852,9 @@ export default function Page() {
           <Icon size={18} /> {item.label}
         </button>
       })}
-    </nav>
+    </nav>}
 
-    {view !== 'practice' && <div className="mt-5 flex items-center justify-between gap-2 sm:mt-7 sm:flex-wrap sm:items-end sm:gap-5">
+    {view !== 'practice' && view !== 'exam' && <div className="mt-5 flex items-center justify-between gap-2 sm:mt-7 sm:flex-wrap sm:items-end sm:gap-5">
       <div>
         <div className="mb-3 hidden items-center gap-2 rounded-full bg-indigo-50 px-3 py-1.5 text-xs font-bold text-indigo-600 sm:inline-flex">
           <Star size={13} fill="currentColor" /> Un poco cada día, mucho francés
@@ -900,6 +901,10 @@ export default function Page() {
           <button type="button" onClick={() => navigate('practice')} className="flex min-h-14 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-3 text-sm font-bold text-white"><BookOpen size={19} /> Practicar</button>
           <button type="button" onClick={() => navigate('review')} className="flex min-h-14 items-center justify-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-3 text-sm font-bold text-indigo-700"><RotateCcw size={19} /> Repasar ({reviewCandidates.length})</button>
         </div>
+        <button type="button" onClick={() => navigate('exam')}
+          className="mt-3 flex w-full min-h-12 items-center justify-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-4 text-sm font-bold text-indigo-700 hover:bg-indigo-100">
+          <GraduationCap size={19} /> Hacer mini-examen · A1–C2
+        </button>
       </div>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
@@ -1019,10 +1024,11 @@ export default function Page() {
           </div>)}
         </div>
       </div>
+      <ExamHistory api={api} />
       <button type="button" onClick={() => navigate('review')} className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 p-4 font-bold text-white">
         <RotateCcw size={19} /> Repasar frases pendientes
       </button>
-    </section> : view === 'review' && reviewMode === 'orthography' ? <section className="mt-4 space-y-4">
+    </section> : view === 'exam' ? <MiniExam api={api} onExit={() => navigate('home')} onFinished={() => setNotice('Mini-examen guardado en Progreso.')} /> : view === 'review' && reviewMode === 'orthography' ? <section className="mt-4 space-y-4">
       <div className="soft-shadow rounded-[24px] border border-slate-100 bg-white p-5 sm:p-8">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
           <div>
@@ -1310,11 +1316,11 @@ export default function Page() {
         </div>}
     </section>}
 
-    {view !== 'practice' && <footer className="mt-10 flex flex-wrap justify-center gap-2 text-center text-xs text-slate-500">
+    {view !== 'practice' && view !== 'exam' && <footer className="mt-10 flex flex-wrap justify-center gap-2 text-center text-xs text-slate-500">
       <span>Parole · aprende francés con práctica deliberada</span><span>·</span><span>Progreso sincronizado en Supabase</span>
     </footer>}
 
-    <nav aria-label="Navegación principal" className={cn('fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 shadow-[0_-6px_24px_rgba(15,23,42,.07)] backdrop-blur sm:hidden', isTyping && 'hidden')}
+    {view !== 'exam' && <nav aria-label="Navegación principal" className={cn('fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 shadow-[0_-6px_24px_rgba(15,23,42,.07)] backdrop-blur sm:hidden', isTyping && 'hidden')}
       style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
       <div className="mx-auto flex max-w-lg items-stretch justify-around gap-0.5 px-1.5 py-2">
         {NAV_ITEMS.map(item => {
@@ -1328,7 +1334,7 @@ export default function Page() {
           </button>
         })}
       </div>
-    </nav>
+    </nav>}
 
     {generatorOpen && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-[3px]" onMouseDown={e => { if (e.target === e.currentTarget && !generating) setGeneratorOpen(false) }}>
       <div role="dialog" aria-modal="true" aria-labelledby="generator-title" className="animate-pop-in w-full max-w-lg rounded-[26px] bg-white p-6 shadow-2xl sm:p-8">
