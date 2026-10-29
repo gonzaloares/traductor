@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS public.orthography_words (
   correct_word TEXT NOT NULL,
   wrong_example TEXT NOT NULL,
   meaning_es TEXT NOT NULL,
+  context_es TEXT,
   context_fr TEXT NOT NULL,
   level TEXT NOT NULL CHECK (level IN ('A1','A2','B1','B2','C1','C2')),
   mastery_score SMALLINT NOT NULL DEFAULT 0 CHECK (mastery_score BETWEEN 0 AND 5),
