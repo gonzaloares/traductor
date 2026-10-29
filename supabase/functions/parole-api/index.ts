@@ -23,6 +23,7 @@ const EVALUATOR_PROMPT = "Eres un profesor nativo de francés experto en enseña
   "- \`corrected_sentence\`: la frase del usuario corregida manteniendo sus palabras elegidas en la medida de lo posible.\n" +
   "- \`natural_alternative\`: cómo lo diría un francés nativo hoy en día de forma muy natural.\n" +
   "- \`grammar_explanation_es\`: explicación breve, didáctica y directa en español de los errores cometidos o de por qué está bien.\\n" +
+  "- `orthography_errors`: array de 0 a 3 objetos { \"written\": palabra escrita con falta, \"correct\": la MISMA palabra con ortografía correcta, \"meaning_es\": significado breve en español }. SOLO faltas claras de letras, tildes o consonantes duplicadas; no incluyas errores de gramática, conjugación, género, plural, elección de otra palabra, espacios, puntuación ni variantes correctas. Si dudas, usa []. Nunca inventes errores.\\n" +
   "Prioridad: la frase española completa determina el significado. Conserva expresamente personas, parentescos, lugares, objetos, cantidades y demás información en las dos versiones francesas. Por ejemplo, «a mi hermana» no se puede omitir sustituyéndolo solo por «lui» sin contexto. No dupliques complementos sin una construcción correcta. La traducción de referencia es orientativa y puede contener errores; admite otras traducciones fieles y correctas. Si no existe una reformulación verdaderamente más natural que conserve toda la información, natural_alternative debe coincidir con corrected_sentence. Adapta las explicaciones al nivel indicado, especialmente A1."
 
 function allowedOrigin(origin: string | null): boolean {
@@ -209,6 +210,130 @@ async function getPracticeScores(): Promise<PracticeScore[]> {
   }
   return all
 }
+
+type OrthographyWord = {
+  id: string; word_key: string; correct_word: string; wrong_example: string;
+  meaning_es: string; context_fr: string; level: Level;
+  mastery_score: number; times_practiced: number; misspellings_count: number;
+  state: 'active' | 'dismissed'; next_review_at: string; created_at: string; updated_at: string
+}
+const UUID_PATTERN = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i
+function wordKey(value: string): string {
+  return value.normalize('NFC').trim().toLocaleLowerCase('fr')
+}
+function tokenExists(sentence: string, word: string): boolean {
+  return sentence.normalize('NFC').toLocaleLowerCase('fr')
+    .split(/[^\p{L}]+/u).includes(wordKey(word))
+}
+function blankContext(sentence: string, word: string): string {
+  const key = wordKey(word)
+  return sentence.normalize('NFC').replace(/\p{L}+/gu,
+    token => wordKey(token) === key ? '_____' : token)
+}
+async function getOrthographyWords(): Promise<OrthographyWord[]> {
+  const all: OrthographyWord[] = []
+  for (let start = 0; start < 50000; start += 500) {
+    const result = await db('orthography_words?select=*&order=next_review_at.asc,created_at.asc&limit=500&offset=' + start)
+    if (!Array.isArray(result)) throw new Error('Formato del banco ortográfico no válido')
+    all.push(...result as OrthographyWord[])
+    if (result.length < 500) break
+  }
+  return all
+}
+async function recordOrthography(evaluation: Record<string, unknown>, level: Level, answer: string): Promise<number> {
+  const items = evaluation.orthography_errors
+  if (!Array.isArray(items) || items.length === 0) return 0
+  const corrected = String(evaluation.corrected_sentence)
+  const seen = new Set<string>()
+  let changed = 0
+  for (const candidate of items.slice(0, 3)) {
+    if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) continue
+    const row = candidate as Record<string, unknown>
+    if (typeof row.written !== 'string' || typeof row.correct !== 'string' ||
+        typeof row.meaning_es !== 'string') continue
+    const written = row.written.normalize('NFC').trim()
+    const correct = row.correct.normalize('NFC').trim()
+    const meaning = row.meaning_es.trim()
+    const key = wordKey(correct)
+    if (!/^\p{L}{2,40}$/u.test(written) || !/^\p{L}{2,40}$/u.test(correct) ||
+        key === wordKey(written) || seen.has(key) ||
+        meaning.length < 2 || meaning.length > 80 ||
+        !tokenExists(answer, written) || !tokenExists(corrected, correct)) continue
+    const context = blankContext(corrected, correct)
+    if (!context.includes('_____') || context.length > 1500) continue
+    seen.add(key)
+    const created = await db('orthography_words?on_conflict=word_key&select=*', {
+      method: 'POST',
+      headers: { Prefer: 'resolution=ignore-duplicates,return=representation' },
+      body: JSON.stringify({
+        word_key: key, correct_word: correct, wrong_example: written,
+        meaning_es: meaning, context_fr: context, level
+      })
+    })
+    if (!Array.isArray(created)) throw new Error('Error guardando una palabra ortográfica')
+    if (created.length === 1) { changed++; continue }
+    const existing = await db('orthography_words?select=*&word_key=eq.' + encodeURIComponent(key) + '&limit=1')
+    if (!Array.isArray(existing) || existing.length !== 1) continue
+    const current = existing[0] as OrthographyWord
+    // A manually discarded false positive must never reappear automatically.
+    if (current.state !== 'active') continue
+    const updated = await db('orthography_words?id=eq.' + encodeURIComponent(current.id) + '&select=*', {
+      method: 'PATCH',
+      headers: { Prefer: 'return=representation' },
+      body: JSON.stringify({
+        misspellings_count: current.misspellings_count + 1,
+        mastery_score: 0,
+        next_review_at: new Date().toISOString(),
+        wrong_example: written, meaning_es: meaning, context_fr: context,
+        updated_at: new Date().toISOString()
+      })
+    })
+    if (Array.isArray(updated) && updated.length === 1) changed++
+  }
+  return changed
+}
+async function reviewOrthography(body: Record<string, unknown>): Promise<Record<string, unknown>> {
+  if (typeof body.wordId !== 'string' || !UUID_PATTERN.test(body.wordId) ||
+      typeof body.answer !== 'string' || body.answer.trim().length < 1 || body.answer.length > 100)
+    return { error: 'Respuesta de ortografía no válida', statusCode: 400 }
+  const found = await db('orthography_words?select=*&id=eq.' + encodeURIComponent(body.wordId) + '&limit=1')
+  if (!Array.isArray(found) || found.length !== 1) return { error: 'Palabra no encontrada', statusCode: 404 }
+  const word = found[0] as OrthographyWord
+  if (word.state !== 'active') return { error: 'Esta palabra está descartada', statusCode: 409 }
+  const given = wordKey(body.answer).replace(/[.!?…]+$/u, '')
+  const correct = given === wordKey(word.correct_word)
+  const mastery = correct ? Math.min(word.mastery_score + 1, 5) : 0
+  const days = [0, 1, 3, 7, 14, 30][mastery]
+  const next = new Date(Date.now() + (correct ? days * 86_400_000 : 10 * 60_000)).toISOString()
+  const update = await db('orthography_words?id=eq.' + encodeURIComponent(word.id) +
+    '&times_practiced=eq.' + word.times_practiced + '&select=*', {
+    method: 'PATCH',
+    headers: { Prefer: 'return=representation' },
+    body: JSON.stringify({
+      mastery_score: mastery, times_practiced: word.times_practiced + 1,
+      next_review_at: next, updated_at: new Date().toISOString()
+    })
+  })
+  if (!Array.isArray(update) || update.length !== 1)
+    return { error: 'La palabra se ha actualizado en otro dispositivo. Sincroniza y repite.', statusCode: 409 }
+  return { correct, word: update[0] }
+}
+async function setOrthographyState(body: Record<string, unknown>): Promise<Record<string, unknown>> {
+  if (typeof body.wordId !== 'string' || !UUID_PATTERN.test(body.wordId) ||
+      !['active','dismissed'].includes(String(body.state)))
+    return { error: 'Datos de palabra no válidos', statusCode: 400 }
+  const changes: Record<string, unknown> = {
+    state: body.state, updated_at: new Date().toISOString()
+  }
+  if (body.state === 'active') changes.next_review_at = new Date().toISOString()
+  const updated = await db('orthography_words?id=eq.' + encodeURIComponent(body.wordId) + '&select=*', {
+    method: 'PATCH', headers: { Prefer: 'return=representation' },
+    body: JSON.stringify(changes)
+  })
+  if (!Array.isArray(updated) || updated.length !== 1) return { error: 'Palabra no encontrada', statusCode: 404 }
+  return { word: updated[0] }
+}
+
 async function evaluate(body: Record<string, unknown>): Promise<Record<string, unknown>> {
   if (typeof body.sentenceId !== 'string' ||
       !/^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i.test(body.sentenceId) ||
@@ -267,7 +392,14 @@ async function evaluate(body: Record<string, unknown>): Promise<Record<string, u
     })
   })
   if (!Array.isArray(inserted)) throw new Error('Formato del historial de notas no válido')
-  return { ...evaluation, sentence: update[0], scoreRecord: inserted[0] ?? null }
+  let orthographySaved = 0
+  // Do not count a second correction of the same encounter, or let an optional spelling
+  // persistence failure stop the sentence result.
+  if (inserted.length === 1) {
+    try { orthographySaved = await recordOrthography(evaluation, current.level, body.userAnswer as string) }
+    catch (error) { console.error('Spelling record failed', error instanceof Error ? error.message : 'unknown') }
+  }
+  return { ...evaluation, sentence: update[0], scoreRecord: inserted[0] ?? null, orthographySaved }
 }
 async function generateBatch(body: Record<string, unknown>): Promise<Record<string, unknown>> {
   if (!['A1','A2','B1','B2'].includes(String(body.level)) ||
@@ -307,7 +439,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
   }
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: headers(request) })
   const action = new URL(request.url).searchParams.get('action')
-  if (!['auth', 'sentences', 'evaluate', 'generate-batch', 'scores'].includes(action ?? '')) {
+  if (!['auth', 'sentences', 'evaluate', 'generate-batch', 'scores', 'orthography', 'orthography-review', 'orthography-status'].includes(action ?? '')) {
     return reply(request, { error: 'Ruta no encontrada' }, 404)
   }
   try {
@@ -336,6 +468,17 @@ Deno.serve(async (request: Request): Promise<Response> => {
     }
     if (action === 'scores' && request.method === 'GET') {
       return reply(request, { scores: await getPracticeScores() })
+    }
+    if (action === 'orthography' && request.method === 'GET') {
+      return reply(request, { words: await getOrthographyWords() })
+    }
+    if (action === 'orthography-review' && request.method === 'POST') {
+      const result = await reviewOrthography(await requestJSON(request))
+      return reply(request, result, typeof result.statusCode === 'number' ? result.statusCode : 200)
+    }
+    if (action === 'orthography-status' && request.method === 'POST') {
+      const result = await setOrthographyState(await requestJSON(request))
+      return reply(request, result, typeof result.statusCode === 'number' ? result.statusCode : 200)
     }
     if (action === 'evaluate' && request.method === 'POST') {
       const result = await evaluate(await requestJSON(request))
