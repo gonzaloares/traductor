@@ -33,6 +33,7 @@ export interface OrthographyWord {
   correct_word: string
   wrong_example: string
   meaning_es: string
+  context_es: string | null
   context_fr: string
   level: Level
   mastery_score: number
