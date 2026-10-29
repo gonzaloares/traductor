@@ -23,7 +23,7 @@ const EVALUATOR_PROMPT = "Eres un profesor nativo de francés experto en enseña
   "- \`corrected_sentence\`: la frase del usuario corregida manteniendo sus palabras elegidas en la medida de lo posible.\n" +
   "- \`natural_alternative\`: cómo lo diría un francés nativo hoy en día de forma muy natural.\n" +
   "- \`grammar_explanation_es\`: explicación breve, didáctica y directa en español de los errores cometidos o de por qué está bien.\\n" +
-  "- `orthography_errors`: array de 0 a 3 objetos { \"written\": palabra escrita con falta, \"correct\": la MISMA palabra con ortografía correcta, \"meaning_es\": significado breve en español }. SOLO faltas claras de letras, tildes o consonantes duplicadas; no incluyas errores de gramática, conjugación, género, plural, elección de otra palabra, espacios, puntuación ni variantes correctas. Si dudas, usa []. Nunca inventes errores.\\n" +
+  "- `orthography_errors`: array de 0 a 3 objetos { \"written\": palabra escrita con falta, \"correct\": la MISMA palabra con ortografía correcta, \"meaning_es\": traducción al español bien escrita y contextualizada, respetando EXACTAMENTE la forma usada en la frase española (si es un verbo conjugado, no confundas costa con cuesta) }. SOLO faltas claras de letras, tildes o consonantes duplicadas; no incluyas errores de gramática, conjugación, género, plural, elección de otra palabra, espacios, puntuación ni variantes correctas. Si dudas, usa []. Nunca inventes errores.\\n" +
   "Prioridad: la frase española completa determina el significado. Conserva expresamente personas, parentescos, lugares, objetos, cantidades y demás información en las dos versiones francesas. Por ejemplo, «a mi hermana» no se puede omitir sustituyéndolo solo por «lui» sin contexto. No dupliques complementos sin una construcción correcta. La traducción de referencia es orientativa y puede contener errores; admite otras traducciones fieles y correctas. Si no existe una reformulación verdaderamente más natural que conserve toda la información, natural_alternative debe coincidir con corrected_sentence. Adapta las explicaciones al nivel indicado: pedagógicas y sencillas en A1, claras y detalladas para C1-C2."
 
 function allowedOrigin(origin: string | null): boolean {
@@ -213,7 +213,7 @@ async function getPracticeScores(): Promise<PracticeScore[]> {
 
 type OrthographyWord = {
   id: string; word_key: string; correct_word: string; wrong_example: string;
-  meaning_es: string; context_fr: string; level: Level;
+  meaning_es: string; context_es: string | null; context_fr: string; level: Level;
   mastery_score: number; times_practiced: number; misspellings_count: number;
   state: 'active' | 'dismissed'; next_review_at: string; created_at: string; updated_at: string
 }
@@ -240,7 +240,7 @@ async function getOrthographyWords(): Promise<OrthographyWord[]> {
   }
   return all
 }
-async function recordOrthography(evaluation: Record<string, unknown>, level: Level, answer: string): Promise<number> {
+async function recordOrthography(evaluation: Record<string, unknown>, level: Level, answer: string, spanishContext: string): Promise<number> {
   const items = evaluation.orthography_errors
   if (!Array.isArray(items) || items.length === 0) return 0
   const corrected = String(evaluation.corrected_sentence)
@@ -267,7 +267,7 @@ async function recordOrthography(evaluation: Record<string, unknown>, level: Lev
       headers: { Prefer: 'resolution=ignore-duplicates,return=representation' },
       body: JSON.stringify({
         word_key: key, correct_word: correct, wrong_example: written,
-        meaning_es: meaning, context_fr: context, level
+        meaning_es: meaning, context_es: spanishContext, context_fr: context, level
       })
     })
     if (!Array.isArray(created)) throw new Error('Error guardando una palabra ortográfica')
@@ -284,7 +284,7 @@ async function recordOrthography(evaluation: Record<string, unknown>, level: Lev
         misspellings_count: current.misspellings_count + 1,
         mastery_score: 0,
         next_review_at: new Date().toISOString(),
-        wrong_example: written, meaning_es: meaning, context_fr: context,
+        wrong_example: written, meaning_es: meaning, context_es: spanishContext, context_fr: context,
         updated_at: new Date().toISOString()
       })
     })
@@ -396,7 +396,7 @@ async function evaluate(body: Record<string, unknown>): Promise<Record<string, u
   // Do not count a second correction of the same encounter, or let an optional spelling
   // persistence failure stop the sentence result.
   if (inserted.length === 1) {
-    try { orthographySaved = await recordOrthography(evaluation, current.level, body.userAnswer as string) }
+    try { orthographySaved = await recordOrthography(evaluation, current.level, body.userAnswer as string, current.spanish_text) }
     catch (error) { console.error('Spelling record failed', error instanceof Error ? error.message : 'unknown') }
   }
   return { ...evaluation, sentence: update[0], scoreRecord: inserted[0] ?? null, orthographySaved }
