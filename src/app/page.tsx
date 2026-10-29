@@ -11,6 +11,7 @@ import {
 import { cn } from '@/lib/utils'
 import { LEVELS, type EvaluationResponse, type Level, type Sentence, type Status, type PracticeScore, type OrthographyWord, type OrthographyReviewResponse } from '@/lib/types'
 import { compareTranslations, type DiffPart } from '@/lib/translation-diff'
+import { ALL_GRAMMAR_TOPICS, CUSTOM_GRAMMAR_TOPIC, topicsForLevel, selectedGrammarTopic } from '@/lib/grammar-topics'
 
 type View = 'home' | 'practice' | 'review' | 'bank' | 'progress'
 type Filter = Level | 'Todos'
@@ -23,54 +24,6 @@ const NAV_ITEMS = [
 ] as const
 const FAVORITES_KEY = 'parole_favorites_v1'
 const CHARACTERS = ['é', 'è', 'ê', 'ë', 'à', 'â', 'ù', 'û', 'ç', 'œ', 'î', 'ï', "'"]
-const A1_TOPICS = [
-  'Présent de être et avoir',
-  'Presente de verbos frecuentes',
-  'Artículos definidos e indefinidos',
-  'Género y plural de sustantivos',
-  'Concordancia de adjetivos',
-  'Negación ne... pas',
-  'Preguntas básicas: où, comment, combien',
-  'Pronombres personales y posesivos',
-  'Preposiciones de lugar',
-  'Futuro próximo: aller + infinitivo',
-  'Rutinas diarias y horas',
-  'Expresiones cotidianas'
-]
-const TOPICS = [
-  'Passé composé vs imparfait', 'Verbos pronominales', 'Pronombres EN e Y',
-  'Pronombres COD y COI', 'Negación compleja', 'Subjuntivo',
-  'Condicional', 'Concordancia del participio pasado',
-  'Pronombres relativos', 'Expresiones de la vida cotidiana'
-]
-const C1_TOPICS = [
-  'Concesión y oposición: bien que, quoique, avoir beau',
-  'Hipótesis y matices del condicional',
-  'Subjonctif passé y construcciones impersonales',
-  'Conectores argumentativos y registro formal',
-  'Nominalización y reformulación precisa',
-  'Discurso indirecto y cambios de perspectiva',
-  'Relaciones de causa y consecuencia',
-  'Modismos y colocaciones frecuentes',
-  'Síntesis y argumentación académica',
-  'Concordancia avanzada y estructura de la frase'
-]
-const C2_TOPICS = [
-  'Matices semánticos, connotaciones y registro',
-  'Concesión enfática: quand bien même y aussi... que',
-  'Giros idiomáticos y expresiones figuradas',
-  'Estilo literario, inversión y énfasis',
-  'Atenuación, ironía y formulaciones diplomáticas',
-  'Articulación lógica de argumentos complejos',
-  'Vocabulario abstracto y precisión léxica',
-  'Colocaciones y sintaxis de registro elevado',
-  'Paráfrasis y reformulación elegante',
-  'Expresión de reservas y razonamiento crítico'
-]
-function topicsForLevel(value: Level): string[] {
-  return value === 'A1' ? A1_TOPICS : value === 'C1' ? C1_TOPICS : value === 'C2' ? C2_TOPICS : TOPICS
-}
-
 const FUNCTION_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
   ? process.env.NEXT_PUBLIC_SUPABASE_URL + '/functions/v1/parole-api'
   : ''
@@ -448,7 +401,8 @@ export default function Page() {
   const [search, setSearch] = useState('')
   const [generatorOpen, setGeneratorOpen] = useState(false)
   const [genLevel, setGenLevel] = useState<Level>('A1')
-  const [genTopic, setGenTopic] = useState(A1_TOPICS[0])
+  const [genTopic, setGenTopic] = useState(ALL_GRAMMAR_TOPICS)
+  const [genCustomTopic, setGenCustomTopic] = useState('')
   const [genCount, setGenCount] = useState(5)
   const [generating, setGenerating] = useState(false)
   const [notice, setNotice] = useState('')
@@ -780,10 +734,12 @@ export default function Page() {
   }, [feedback, view, reviewMode, next])
   const generate = async (event: FormEvent) => {
     event.preventDefault()
+    const topic = selectedGrammarTopic(genTopic, genCustomTopic)
+    if (topic.length < 2 || topic.length > 100 || generating) return
     setGenerating(true); setError('')
     try {
       const result = await api<{ sentences: Sentence[]; insertedCount: number }>('/api/generate-batch', {
-        method: 'POST', body: JSON.stringify({ level: genLevel, topic: genTopic, count: genCount })
+        method: 'POST', body: JSON.stringify({ level: genLevel, topic, count: genCount })
       })
       setSentences(prev => {
         const ids = new Set(prev.map(s => s.id))
@@ -1312,16 +1268,32 @@ export default function Page() {
         <h2 id="generator-title" className="mt-5 text-2xl font-extrabold text-slate-900">Nuevas frases con IA</h2>
         <p className="mt-2 text-sm leading-relaxed text-slate-500">Amplía tu banco con frases adaptadas al nivel y a la gramática que quieres reforzar.</p>
         <form onSubmit={generate} className="mt-7 space-y-5">
-          <div><label htmlFor="gen-level" className="mb-2 block text-sm font-bold text-slate-700">Nivel</label>
-            <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">{LEVELS.map(v =>
-              <button type="button" key={v} onClick={() => { setGenLevel(v); setGenTopic(topicsForLevel(v)[0]) }}
+          <div>
+            <p className="mb-2 text-sm font-bold text-slate-700">Nivel</p>
+            <div role="group" aria-label="Nivel de francés" className="grid grid-cols-3 gap-2 sm:grid-cols-6">{LEVELS.map(v =>
+              <button type="button" key={v} aria-pressed={genLevel === v}
+                onClick={() => { setGenLevel(v); setGenTopic(ALL_GRAMMAR_TOPICS); setGenCustomTopic('') }}
                 className={cn('rounded-xl border-2 py-3 text-sm font-extrabold',
                   genLevel === v ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-slate-100 text-slate-500')}>{v}</button>)}</div>
           </div>
-          <div><label htmlFor="gen-topic" className="mb-2 block text-sm font-bold text-slate-700">Tema gramatical</label>
-            <input id="gen-topic" list="topics" value={genTopic} onChange={e => setGenTopic(e.target.value)}
-              maxLength={100} required className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-indigo-500 focus:outline-none" />
-            <datalist id="topics">{topicsForLevel(genLevel).map(topic => <option key={topic} value={topic}/>)}</datalist>
+          <div>
+            <label htmlFor="gen-topic" className="mb-2 block text-sm font-bold text-slate-700">Tema gramatical</label>
+            <select id="gen-topic" value={genTopic} onChange={e => setGenTopic(e.target.value)}
+              className="w-full min-w-0 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none focus:border-indigo-500">
+              <option value={ALL_GRAMMAR_TOPICS}>{ALL_GRAMMAR_TOPICS}</option>
+              {topicsForLevel(genLevel).map(topic => <option key={topic} value={topic}>{topic}</option>)}
+              <option value={CUSTOM_GRAMMAR_TOPIC}>{CUSTOM_GRAMMAR_TOPIC}</option>
+            </select>
+            {genTopic === CUSTOM_GRAMMAR_TOPIC ? <div className="mt-3">
+              <label htmlFor="gen-custom-topic" className="mb-1.5 block text-xs font-bold text-slate-600">Especifica el tema</label>
+              <input id="gen-custom-topic" value={genCustomTopic} onChange={e => setGenCustomTopic(e.target.value)}
+                autoFocus maxLength={100} required minLength={2} placeholder="Ej.: la diferencia entre depuis y pendant"
+                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none focus:border-indigo-500" />
+            </div> : <p className="mt-2 text-xs text-slate-500">
+              {genTopic === ALL_GRAMMAR_TOPICS
+                ? 'La IA mezclará distintos temas adecuados al nivel ' + genLevel + '.'
+                : 'Las frases se centrarán en este tema del nivel ' + genLevel + '.'}
+            </p>}
           </div>
           <div><label htmlFor="gen-count" className="mb-2 block text-sm font-bold text-slate-700">Cantidad de frases</label>
             <select id="gen-count" value={genCount} onChange={e => setGenCount(Number(e.target.value))}
@@ -1329,7 +1301,7 @@ export default function Page() {
               {[3, 5, 8, 10].map(n => <option key={n} value={n}>{n} frases</option>)}
             </select>
           </div>
-          <button type="submit" disabled={generating || genTopic.trim().length < 2}
+          <button type="submit" disabled={generating || selectedGrammarTopic(genTopic, genCustomTopic).length < 2 || selectedGrammarTopic(genTopic, genCustomTopic).length > 100}
             className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 p-4 font-bold text-white shadow-lg shadow-indigo-100 hover:bg-indigo-700 disabled:opacity-50">
             {generating ? <Loader2 size={19} className="animate-spin" /> : <Sparkles size={19} />}
             {generating ? 'Creando frases...' : 'Generar y empezar a practicar'}
