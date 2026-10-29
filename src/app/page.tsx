@@ -959,6 +959,11 @@ export default function Page() {
             aria-label="Seleccionar nivel de práctica">
             {(['Todos', ...LEVELS] as const).map(v => <option key={v} value={v}>{v === 'Todos' ? 'Todos los niveles' : v}</option>)}
           </select>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-600 sm:ml-auto" role="status" aria-live="polite">
+            <span><strong className="font-extrabold tabular-nums text-slate-800">{loading ? '—' : sentences.length}</strong> frases en el banco</span>
+            {level !== 'Todos' && <span><strong className="font-extrabold tabular-nums text-slate-800">{loading ? '—' : filtered.length}</strong> del nivel {level}</span>}
+            <span><strong className="font-extrabold tabular-nums text-indigo-700">{loading ? '—' : due.length}</strong> pendientes ahora</span>
+          </div>
         </div>}
         {loading ? <div className="flex min-h-80 items-center justify-center gap-2 text-slate-500"><Loader2 className="animate-spin" /> Cargando frases...</div>
           : current ? <>
