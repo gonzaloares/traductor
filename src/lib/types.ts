@@ -27,7 +27,28 @@ export interface PracticeScore {
   score: number
   created_at: string
 }
+export interface OrthographyWord {
+  id: string
+  word_key: string
+  correct_word: string
+  wrong_example: string
+  meaning_es: string
+  context_fr: string
+  level: Level
+  mastery_score: number
+  times_practiced: number
+  misspellings_count: number
+  state: 'active' | 'dismissed'
+  next_review_at: string
+  created_at: string
+  updated_at: string
+}
+export interface OrthographyReviewResponse {
+  correct: boolean
+  word: OrthographyWord
+}
 export interface EvaluationResponse extends Evaluation {
+  orthographySaved?: number
   sentence: Sentence
   scoreRecord?: PracticeScore | null
 }
