@@ -20,7 +20,17 @@ export interface Evaluation {
   natural_alternative: string
   grammar_explanation_es: string
 }
-export interface EvaluationResponse extends Evaluation { sentence: Sentence }
+export interface PracticeScore {
+  practice_id: string
+  sentence_id: string
+  level: Level
+  score: number
+  created_at: string
+}
+export interface EvaluationResponse extends Evaluation {
+  sentence: Sentence
+  scoreRecord?: PracticeScore | null
+}
 export const LEVELS: Level[] = ['A1', 'A2', 'B1', 'B2']
 export const isLevel = (value: unknown): value is Level => LEVELS.includes(value as Level)
 export const REVIEW_DAYS: Record<number, number> = { 1: 1, 2: 3, 3: 7, 4: 14, 5: 30 }
