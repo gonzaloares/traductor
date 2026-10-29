@@ -32,6 +32,22 @@ CREATE INDEX IF NOT EXISTS sentences_level_review_index
 CREATE UNIQUE INDEX IF NOT EXISTS sentences_unique_level_spanish
   ON public.sentences (level, spanish_text);
 
+-- First-attempt score history used by the Progreso screen.
+-- Re-trying a corrected sentence uses the same practice_id and is ignored.
+-- The client cannot read this table directly; only the authenticated Edge Function can.
+CREATE TABLE IF NOT EXISTS public.practice_scores (
+  practice_id UUID PRIMARY KEY,
+  sentence_id UUID NOT NULL REFERENCES public.sentences(id) ON DELETE CASCADE,
+  level TEXT NOT NULL CHECK (level IN ('A1', 'A2', 'B1', 'B2')),
+  score SMALLINT NOT NULL CHECK (score BETWEEN 0 AND 100),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+ALTER TABLE public.practice_scores ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.practice_scores FROM anon, authenticated;
+GRANT SELECT, INSERT ON public.practice_scores TO service_role;
+CREATE INDEX IF NOT EXISTS practice_scores_date_idx ON public.practice_scores (created_at, practice_id);
+CREATE INDEX IF NOT EXISTS practice_scores_level_date_idx ON public.practice_scores (level, created_at, practice_id);
+
 -- 60 manually curated examples: 30 A1, 10 A2, 10 B1, 10 B2.
 -- Repeatable seed: existing rows and user progress remain unchanged.
 INSERT INTO public.sentences (spanish_text, reference_french, level, grammar_topic, source)
