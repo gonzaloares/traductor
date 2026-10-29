@@ -463,9 +463,13 @@ export default function Page() {
   const spellActive = useMemo(() => spellWords.filter(w => w.state === 'active'), [spellWords])
   const spellDue = spellActive.filter(w => new Date(w.next_review_at).getTime() <= now)
   const spellMastered = spellActive.filter(w => w.mastery_score >= 4).length
-  const spellCurrent = spellActive.filter(w =>
+  const spellPending = spellActive.filter(w =>
     (spellAhead || new Date(w.next_review_at).getTime() <= now) && !spellSeen.includes(w.id))
     .sort((a, b) => new Date(a.next_review_at).getTime() - new Date(b.next_review_at).getTime())[0] ?? null
+  // Keep the reviewed word on screen until the user explicitly chooses "Siguiente".
+  // Its next_review_at changes on grading, so relying only on the due queue would
+  // immediately replace the question underneath its feedback.
+  const spellCurrent = spellResult?.word ?? spellPending
 
   const saveSpellWord = (word: OrthographyWord) =>
     setSpellWords(prev => prev.map(w => w.id === word.id ? word : w))
