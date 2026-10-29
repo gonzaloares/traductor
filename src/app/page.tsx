@@ -42,6 +42,33 @@ const TOPICS = [
   'Condicional', 'Concordancia del participio pasado',
   'Pronombres relativos', 'Expresiones de la vida cotidiana'
 ]
+const C1_TOPICS = [
+  'Concesión y oposición: bien que, quoique, avoir beau',
+  'Hipótesis y matices del condicional',
+  'Subjonctif passé y construcciones impersonales',
+  'Conectores argumentativos y registro formal',
+  'Nominalización y reformulación precisa',
+  'Discurso indirecto y cambios de perspectiva',
+  'Relaciones de causa y consecuencia',
+  'Modismos y colocaciones frecuentes',
+  'Síntesis y argumentación académica',
+  'Concordancia avanzada y estructura de la frase'
+]
+const C2_TOPICS = [
+  'Matices semánticos, connotaciones y registro',
+  'Concesión enfática: quand bien même y aussi... que',
+  'Giros idiomáticos y expresiones figuradas',
+  'Estilo literario, inversión y énfasis',
+  'Atenuación, ironía y formulaciones diplomáticas',
+  'Articulación lógica de argumentos complejos',
+  'Vocabulario abstracto y precisión léxica',
+  'Colocaciones y sintaxis de registro elevado',
+  'Paráfrasis y reformulación elegante',
+  'Expresión de reservas y razonamiento crítico'
+]
+function topicsForLevel(value: Level): string[] {
+  return value === 'A1' ? A1_TOPICS : value === 'C1' ? C1_TOPICS : value === 'C2' ? C2_TOPICS : TOPICS
+}
 
 const FUNCTION_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
   ? process.env.NEXT_PUBLIC_SUPABASE_URL + '/functions/v1/parole-api'
@@ -92,7 +119,9 @@ function levelStyle(level: Level): string {
   return level === 'A1' ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
     : level === 'A2' ? 'bg-sky-50 text-sky-700 border-sky-100'
     : level === 'B1' ? 'bg-amber-50 text-amber-700 border-amber-100'
-      : 'bg-violet-50 text-violet-700 border-violet-100'
+    : level === 'B2' ? 'bg-violet-50 text-violet-700 border-violet-100'
+    : level === 'C1' ? 'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-100'
+    : 'bg-rose-50 text-rose-700 border-rose-100'
 }
 function Mastery({ score, showLabel = false }: { score: number; showLabel?: boolean }) {
   return <div className="flex items-center gap-2" aria-label={'Dominio ' + score + ' de 5'}>
@@ -674,7 +703,7 @@ export default function Page() {
       <div className="flex min-w-0 items-center gap-2 sm:gap-3">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-xl font-black text-white shadow-md shadow-indigo-200 sm:h-11 sm:w-11 sm:rounded-2xl">P<span className="text-amber-300">.</span></div>
         <div><div className="text-[19px] font-extrabold tracking-tight text-slate-900 sm:text-[22px]">parole<span className="text-indigo-600">.</span></div>
-          <p className="hidden text-[11px] font-medium tracking-wide text-slate-500 sm:block">FRANCÉS ACTIVO · A1—B2</p></div>
+          <p className="hidden text-[11px] font-medium tracking-wide text-slate-500 sm:block">FRANCÉS ACTIVO · A1—C2</p></div>
       </div>
       {view === 'practice' ? <button type="button" onClick={() => void load()} disabled={loading} aria-label="Sincronizar" title="Sincronizar con la nube"
           className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500">
@@ -1169,15 +1198,15 @@ export default function Page() {
         <p className="mt-2 text-sm leading-relaxed text-slate-500">Amplía tu banco con frases adaptadas al nivel y a la gramática que quieres reforzar.</p>
         <form onSubmit={generate} className="mt-7 space-y-5">
           <div><label htmlFor="gen-level" className="mb-2 block text-sm font-bold text-slate-700">Nivel</label>
-            <div className="grid grid-cols-4 gap-2">{LEVELS.map(v =>
-              <button type="button" key={v} onClick={() => { setGenLevel(v); setGenTopic(v === 'A1' ? A1_TOPICS[0] : TOPICS[0]) }}
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">{LEVELS.map(v =>
+              <button type="button" key={v} onClick={() => { setGenLevel(v); setGenTopic(topicsForLevel(v)[0]) }}
                 className={cn('rounded-xl border-2 py-3 text-sm font-extrabold',
                   genLevel === v ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-slate-100 text-slate-500')}>{v}</button>)}</div>
           </div>
           <div><label htmlFor="gen-topic" className="mb-2 block text-sm font-bold text-slate-700">Tema gramatical</label>
             <input id="gen-topic" list="topics" value={genTopic} onChange={e => setGenTopic(e.target.value)}
               maxLength={100} required className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-indigo-500 focus:outline-none" />
-            <datalist id="topics">{(genLevel === 'A1' ? A1_TOPICS : TOPICS).map(topic => <option key={topic} value={topic}/>)}</datalist>
+            <datalist id="topics">{topicsForLevel(genLevel).map(topic => <option key={topic} value={topic}/>)}</datalist>
           </div>
           <div><label htmlFor="gen-count" className="mb-2 block text-sm font-bold text-slate-700">Cantidad de frases</label>
             <select id="gen-count" value={genCount} onChange={e => setGenCount(Number(e.target.value))}
