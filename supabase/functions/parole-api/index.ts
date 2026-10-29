@@ -537,7 +537,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
   }
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: headers(request) })
   const action = new URL(request.url).searchParams.get('action')
-  if (!['auth', 'sentences', 'evaluate', 'generate-batch', 'scores', 'orthography', 'orthography-review', 'orthography-status', 'teacher-chat', 'mini-exam-start', 'mini-exam-history', 'mini-exam-finish', 'mini-exam-transcribe'].includes(action ?? '')) {
+  if (!['auth', 'sentences', 'evaluate', 'generate-batch', 'scores', 'orthography', 'orthography-review', 'orthography-status', 'teacher-chat', 'mini-exam-start', 'mini-exam-history', 'mini-exam-finish', 'mini-exam-transcribe', 'mini-exam-abandon'].includes(action ?? '')) {
     return reply(request, { error: 'Ruta no encontrada' }, 404)
   }
   try {
@@ -585,6 +585,10 @@ Deno.serve(async (request: Request): Promise<Response> => {
     }
     if (action === 'mini-exam-finish' && request.method === 'POST') {
       const result = await miniExams.finish(await requestJSON(request))
+      return reply(request, result, typeof result.statusCode === 'number' ? result.statusCode : 200)
+    }
+    if (action === 'mini-exam-abandon' && request.method === 'POST') {
+      const result = await miniExams.abandon(await requestJSON(request))
       return reply(request, result, typeof result.statusCode === 'number' ? result.statusCode : 200)
     }
     if (action === 'mini-exam-transcribe' && request.method === 'POST') {
