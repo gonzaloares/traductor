@@ -1,6 +1,6 @@
 # Parole — francés activo en GitHub Pages
 
-**Parole** es una aplicación de traducción activa español → francés para niveles A1, A2, B1 y B2. Sus datos se sincronizan en Supabase mediante un algoritmo de repetición espaciada (SRS). La corrección de las respuestas y la generación de nuevas frases se realizan con **OpenAI `gpt-4o-mini`**.
+**Parole** es una aplicación de traducción activa español → francés para los seis niveles del MCER (A1, A2, B1, B2, C1 y C2). Sus datos se sincronizan en Supabase mediante un algoritmo de repetición espaciada (SRS). La corrección de las respuestas y la generación de nuevas frases se realizan con **OpenAI `gpt-4o-mini`**.
 
 ## Instalar Parole como aplicación (PWA)
 
@@ -73,7 +73,7 @@ Accede a **http://localhost:3000/traductor/** (en local también usa el backend 
 
 ## Datos, evaluación y SRS
 
-El banco comienza con 60 frases: 30 de A1, 10 de A2, 10 de B1 y 10 de B2. Puedes generar más frases según nivel y tema, consultar los repasos pendientes, escuchar el francés y revisar las explicaciones.
+El banco inicial incluye 96 frases: 30 de A1, 10 de A2, 10 de B1, 10 de B2, 18 de C1 y 18 de C2. Puedes generar más frases según nivel y tema, consultar los repasos pendientes, escuchar el francés y revisar las explicaciones.
 
 | Resultado | Dominio | Intervalo |
 |---|---|---|
