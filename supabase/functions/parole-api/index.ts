@@ -196,6 +196,19 @@ async function getSentences(): Promise<Sentence[]> {
   }
   return all
 }
+type PracticeScore = {
+  practice_id: string; sentence_id: string; level: Level; score: number; created_at: string
+}
+async function getPracticeScores(): Promise<PracticeScore[]> {
+  const all: PracticeScore[] = []
+  for (let start = 0; start < 100000; start += 500) {
+    const result = await db('practice_scores?select=practice_id,sentence_id,level,score,created_at&order=created_at.asc,practice_id.asc&limit=500&offset=' + start)
+    if (!Array.isArray(result)) throw new Error('Formato de notas no válido')
+    all.push(...(result as PracticeScore[]))
+    if (result.length < 500) break
+  }
+  return all
+}
 async function evaluate(body: Record<string, unknown>): Promise<Record<string, unknown>> {
   if (typeof body.sentenceId !== 'string' ||
       !/^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i.test(body.sentenceId) ||
@@ -203,6 +216,13 @@ async function evaluate(body: Record<string, unknown>): Promise<Record<string, u
       body.userAnswer.length > 1500) {
     return { error: 'Datos de traducción no válidos', statusCode: 400 }
   }
+  if (body.practiceId !== undefined &&
+      (typeof body.practiceId !== 'string' ||
+       !/^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i.test(body.practiceId))) {
+    return { error: 'Identificador de práctica no válido', statusCode: 400 }
+  }
+  // Previous versions of the client did not send an identifier; preserve compatibility.
+  const practiceId = typeof body.practiceId === 'string' ? body.practiceId : crypto.randomUUID()
   const matches = await db('sentences?select=*&id=eq.' + encodeURIComponent(body.sentenceId) + '&limit=1')
   if (!Array.isArray(matches) || matches.length === 0) {
     return { error: 'Frase no encontrada', statusCode: 404 }
@@ -237,7 +257,17 @@ async function evaluate(body: Record<string, unknown>): Promise<Record<string, u
   if (!Array.isArray(update) || update.length !== 1) {
     return { error: 'La frase ha cambiado en otro dispositivo. Actualiza los datos.', statusCode: 409 }
   }
-  return { ...evaluation, sentence: update[0] }
+  // One saved score per encounter. Re-trying a correction reuses practiceId and cannot inflate the average.
+  const inserted = await db('practice_scores?on_conflict=practice_id&select=*', {
+    method: 'POST',
+    headers: { Prefer: 'resolution=ignore-duplicates,return=representation' },
+    body: JSON.stringify({
+      practice_id: practiceId, sentence_id: current.id,
+      level: current.level, score: Math.round(evaluation.score)
+    })
+  })
+  if (!Array.isArray(inserted)) throw new Error('Formato del historial de notas no válido')
+  return { ...evaluation, sentence: update[0], scoreRecord: inserted[0] ?? null }
 }
 async function generateBatch(body: Record<string, unknown>): Promise<Record<string, unknown>> {
   if (!['A1','A2','B1','B2'].includes(String(body.level)) ||
@@ -277,7 +307,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
   }
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: headers(request) })
   const action = new URL(request.url).searchParams.get('action')
-  if (!['auth', 'sentences', 'evaluate', 'generate-batch'].includes(action ?? '')) {
+  if (!['auth', 'sentences', 'evaluate', 'generate-batch', 'scores'].includes(action ?? '')) {
     return reply(request, { error: 'Ruta no encontrada' }, 404)
   }
   try {
@@ -303,6 +333,9 @@ Deno.serve(async (request: Request): Promise<Response> => {
     }
     if (action === 'sentences' && request.method === 'GET') {
       return reply(request, { sentences: await getSentences() })
+    }
+    if (action === 'scores' && request.method === 'GET') {
+      return reply(request, { scores: await getPracticeScores() })
     }
     if (action === 'evaluate' && request.method === 'POST') {
       const result = await evaluate(await requestJSON(request))
