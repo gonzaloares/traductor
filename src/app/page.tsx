@@ -676,17 +676,10 @@ export default function Page() {
         <div><div className="text-[19px] font-extrabold tracking-tight text-slate-900 sm:text-[22px]">parole<span className="text-indigo-600">.</span></div>
           <p className="hidden text-[11px] font-medium tracking-wide text-slate-500 sm:block">FRANCÉS ACTIVO · A1—B2</p></div>
       </div>
-      {view === 'practice' ? <div className="flex items-center gap-2">
-        <label htmlFor="practice-level" className="sr-only">Nivel de práctica</label>
-        <select id="practice-level" value={level} onChange={e => changeLevel(e.target.value as Filter)}
-          className="max-w-28 rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-sm font-semibold text-slate-800">
-          {(['Todos', ...LEVELS] as const).map(v => <option key={v} value={v}>{v}</option>)}
-        </select>
-        <button type="button" onClick={() => void load()} disabled={loading} aria-label="Sincronizar" title="Sincronizar con la nube"
+      {view === 'practice' ? <button type="button" onClick={() => void load()} disabled={loading} aria-label="Sincronizar" title="Sincronizar con la nube"
           className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500">
           <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
-        </button>
-      </div> : <button type="button" onClick={() => { setGeneratorOpen(true); setNotice('') }}
+        </button> : <button type="button" onClick={() => { setGeneratorOpen(true); setNotice('') }}
         className="flex shrink-0 items-center gap-1.5 rounded-xl bg-indigo-600 px-3 py-2.5 text-xs font-bold text-white shadow-lg shadow-indigo-100 transition hover:bg-indigo-700 sm:gap-2 sm:px-5 sm:py-3 sm:text-sm">
         <Sparkles size={17} /> <span className="hidden sm:inline">Generar nuevas frases con IA</span><span className="sm:hidden">Generar con IA</span>
       </button>}
@@ -946,7 +939,7 @@ export default function Page() {
           {spellWords.length === 0 && <p className="py-3 text-sm text-slate-500">Todavía no hay palabras guardadas.</p>}
         </div>
       </details>
-    </section> : view === 'practice' || view === 'review' ? <div className="mt-3 grid items-start gap-4 sm:mt-7 lg:grid-cols-[minmax(0,1fr)_290px] lg:gap-6">
+    </section> : view === 'practice' || view === 'review' ? <div className={cn('mt-3 grid items-start gap-4 sm:mt-7', view === 'practice' ? 'mx-auto w-full max-w-5xl' : 'lg:grid-cols-[minmax(0,1fr)_290px] lg:gap-6')}>
       {view === 'review' && <div className="col-span-full flex flex-wrap items-center gap-2 rounded-2xl border border-indigo-100 bg-white p-3">
         <button type="button" onClick={() => { practiceIdRef.current = null; setReviewWeak(false); setReviewSeen([]); setActiveId(null); setFeedback(null); setAnswer(''); setShowHint(false) }}
           aria-pressed={!reviewWeak} className={cn('rounded-xl px-3 py-2 text-xs font-bold sm:text-sm', !reviewWeak ? 'bg-indigo-600 text-white' : 'bg-indigo-50 text-indigo-700')}>
@@ -959,6 +952,14 @@ export default function Page() {
         <p className="w-full text-xs text-slate-500">Las dificultades incluyen frases practicadas con dominio inferior a 4/5; pueden repasarse antes de tiempo.</p>
       </div>}
       <section className="soft-shadow min-w-0 rounded-[22px] border border-slate-100 bg-white p-4 sm:rounded-[26px] sm:p-8">
+        {view === 'practice' && <div className="mb-5 flex flex-wrap items-center gap-3 border-b border-slate-100 pb-4 sm:mb-7 sm:pb-5">
+          <label htmlFor="practice-level" className="text-sm font-extrabold text-slate-800">Nivel de práctica</label>
+          <select id="practice-level" value={level} onChange={e => changeLevel(e.target.value as Filter)}
+            className="min-h-11 rounded-xl border-2 border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-bold text-indigo-800 outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100"
+            aria-label="Seleccionar nivel de práctica">
+            {(['Todos', ...LEVELS] as const).map(v => <option key={v} value={v}>{v === 'Todos' ? 'Todos los niveles' : v}</option>)}
+          </select>
+        </div>}
         {loading ? <div className="flex min-h-80 items-center justify-center gap-2 text-slate-500"><Loader2 className="animate-spin" /> Cargando frases...</div>
           : current ? <>
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1052,7 +1053,7 @@ export default function Page() {
         </div>}
       </section>
 
-      <aside className="hidden space-y-5 lg:block">
+      {view === 'review' && <aside className="hidden space-y-5 lg:block">
         <div className="rounded-[24px] border border-indigo-100 bg-indigo-50/70 p-6">
           <div className="mb-4 inline-flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-100 text-indigo-600"><GraduationCap size={23} /></div>
           <h2 className="text-lg font-extrabold text-slate-900">Así se aprende</h2>
@@ -1071,7 +1072,7 @@ export default function Page() {
           </div>
           <p className="mt-2 text-xs font-semibold text-slate-500">{filtered.length ? Math.round(mastered / filtered.length * 100) : 0}% de frases dominadas</p>
         </div>
-      </aside>
+      </aside>}
       {view === 'review' && <details className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 lg:hidden">
         <summary className="cursor-pointer font-semibold text-indigo-700">Cómo funciona Parole y la repetición espaciada</summary>
         <div className="mt-3 space-y-2 leading-relaxed text-slate-700">
