@@ -21,6 +21,11 @@ export interface TranslationDiff {
 
 const TOKENS = /\s+|[\p{L}\p{M}\p{N}]+|[^\s\p{L}\p{M}\p{N}]+/gu
 
+/** The keyboard fallback oe for œ is not a correction-worthy difference. */
+function comparableToken(value: string): string {
+  return value.normalize('NFC').replaceAll('œ', 'oe').replaceAll('Œ', 'OE')
+}
+
 function push(parts: DiffPart[], kind: ChangeKind, text: string): void {
   if (!text) return
   const last = parts[parts.length - 1]
@@ -51,7 +56,7 @@ export function compareTranslations(originalText: string, correctedText: string)
   )
   for (let i = originalTokens.length - 1; i >= 0; i--) {
     for (let j = correctedTokens.length - 1; j >= 0; j--) {
-      dp[i][j] = originalTokens[i] === correctedTokens[j]
+      dp[i][j] = comparableToken(originalTokens[i]) === comparableToken(correctedTokens[j])
         ? dp[i + 1][j + 1] + 1
         : Math.max(dp[i + 1][j], dp[i][j + 1])
     }
@@ -71,7 +76,7 @@ export function compareTranslations(originalText: string, correctedText: string)
 
   while (i < originalTokens.length || j < correctedTokens.length) {
     if (i < originalTokens.length && j < correctedTokens.length &&
-        originalTokens[i] === correctedTokens[j]) {
+        comparableToken(originalTokens[i]) === comparableToken(correctedTokens[j])) {
       flush()
       push(original, 'unchanged', originalTokens[i])
       push(corrected, 'unchanged', correctedTokens[j])
@@ -92,6 +97,6 @@ export function compareTranslations(originalText: string, correctedText: string)
 
   return {
     original, corrected, changes,
-    hasChanges: originalText !== correctedText
+    hasChanges: changes.length > 0
   }
 }
