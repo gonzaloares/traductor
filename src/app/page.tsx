@@ -713,7 +713,28 @@ export default function Page() {
         <Sparkles size={17} /> <span className="hidden sm:inline">Generar nuevas frases con IA</span><span className="sm:hidden">Generar con IA</span>
       </button>}
     </header>
-    {view !== 'practice' && <div className="mt-4 flex items-center justify-between gap-2 sm:mt-9 sm:flex-wrap sm:items-end sm:gap-5">
+
+    {notice && <div className="mt-5 flex items-center justify-between rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800" role="status">
+      <span className="flex items-center gap-2"><Check size={17} />{notice}</span>
+      <button onClick={() => setNotice('')} aria-label="Cerrar aviso"><X size={17} /></button>
+    </div>}
+    {error && <div className="mt-5 flex items-start justify-between gap-3 rounded-xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm text-rose-800" role="alert">
+      <span>{error}</span><button type="button" aria-label="Cerrar error" onClick={() => setError('')}><X size={17}/></button>
+    </div>}
+
+    <nav className="mt-4 hidden gap-1 border-b border-slate-200 sm:mt-8 sm:flex" aria-label="Secciones">
+      {NAV_ITEMS.map(item => {
+        const Icon = item.icon
+        return <button key={item.view} type="button" onClick={() => navigate(item.view)}
+          aria-current={view === item.view ? 'page' : undefined}
+          className={cn('flex items-center gap-2 border-b-[3px] px-3 pb-3 pt-2 text-sm font-bold',
+            view === item.view ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-800')}>
+          <Icon size={18} /> {item.label}
+        </button>
+      })}
+    </nav>
+
+    {view !== 'practice' && <div className="mt-5 flex items-center justify-between gap-2 sm:mt-7 sm:flex-wrap sm:items-end sm:gap-5">
       <div>
         <div className="mb-3 hidden items-center gap-2 rounded-full bg-indigo-50 px-3 py-1.5 text-xs font-bold text-indigo-600 sm:inline-flex">
           <Star size={13} fill="currentColor" /> Un poco cada día, mucho francés
@@ -737,25 +758,6 @@ export default function Page() {
       </div>
     </div>}
 
-    {notice && <div className="mt-5 flex items-center justify-between rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800" role="status">
-      <span className="flex items-center gap-2"><Check size={17} />{notice}</span>
-      <button onClick={() => setNotice('')} aria-label="Cerrar aviso"><X size={17} /></button>
-    </div>}
-    {error && <div className="mt-5 flex items-start justify-between gap-3 rounded-xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm text-rose-800" role="alert">
-      <span>{error}</span><button type="button" aria-label="Cerrar error" onClick={() => setError('')}><X size={17}/></button>
-    </div>}
-
-    <nav className="mt-4 hidden gap-1 border-b border-slate-200 sm:mt-8 sm:flex" aria-label="Secciones">
-      {NAV_ITEMS.map(item => {
-        const Icon = item.icon
-        return <button key={item.view} type="button" onClick={() => navigate(item.view)}
-          aria-current={view === item.view ? 'page' : undefined}
-          className={cn('flex items-center gap-2 border-b-[3px] px-3 pb-3 pt-2 text-sm font-bold',
-            view === item.view ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-800')}>
-          <Icon size={18} /> {item.label}
-        </button>
-      })}
-    </nav>
 
     {view === 'review' && <div className="mt-5 grid grid-cols-2 gap-2 rounded-2xl bg-slate-100 p-1.5" role="group" aria-label="Modalidad de repaso">
       <button type="button" onClick={() => { setReviewMode('sentences'); setSpellResult(null); setSpellAnswer('') }}
