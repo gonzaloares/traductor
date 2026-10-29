@@ -911,6 +911,7 @@ export default function Page() {
               value={spellAnswer} onChange={event => setSpellAnswer(event.target.value)}
               placeholder="Escribe en francés..."
               className="block w-full rounded-xl border-2 border-slate-200 bg-white px-4 py-4 text-lg text-slate-900 outline-none focus:border-indigo-500 disabled:bg-slate-50" />
+            {/[œŒ]/u.test(spellCurrent.correct_word) && <p className="text-xs text-slate-500">Puedes escribir oe en lugar de œ; la forma correcta seguirá apareciendo en la solución.</p>}
             {!spellResult && <button type="submit" disabled={!spellAnswer.trim() || spellBusy}
               className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 py-3.5 font-bold text-white disabled:opacity-40">
               {spellBusy ? <Loader2 size={18} className="animate-spin" /> : <ArrowRight size={18} />}
