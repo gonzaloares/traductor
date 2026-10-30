@@ -1051,7 +1051,8 @@ export default function Page() {
           <form onSubmit={submitSpelling} className="mt-5 space-y-3">
             <label htmlFor="spell-input" className="sr-only">Escribe la palabra en francés</label>
             <input id="spell-input" ref={spellInputRef} type="text" autoComplete="off" autoCorrect="off"
-              autoCapitalize="off" spellCheck={false} disabled={spellBusy || spellResult !== null}
+              autoCapitalize="off" spellCheck={false}
+              data-gramm="false" data-gramm_editor="false" data-enable-grammarly="false" disabled={spellBusy || spellResult !== null}
               value={spellAnswer} onChange={event => setSpellAnswer(event.target.value)}
               placeholder="Escribe en francés..."
               className="block w-full rounded-xl border-2 border-slate-200 bg-white px-4 py-4 text-lg text-slate-900 outline-none focus:border-indigo-500 disabled:bg-slate-50" />
@@ -1189,6 +1190,8 @@ export default function Page() {
           {!feedback ? <div className="mt-5 sm:mt-8">
             <label htmlFor="translation" className={cn('mb-2 block text-sm font-bold text-slate-700', view === 'practice' && 'sr-only')}>Tu traducción</label>
             <textarea id="translation" ref={textareaRef} value={answer} onChange={e => setAnswer(e.target.value)}
+              autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false}
+              data-gramm="false" data-gramm_editor="false" data-enable-grammarly="false"
               onKeyDown={keyDown} onFocus={() => setIsTyping(true)} onBlur={() => setIsTyping(false)}
               rows={3} disabled={submitting} placeholder="Escribe tu traducción en francés..."
               className="block min-h-28 w-full resize-y rounded-2xl border-2 border-slate-200 bg-slate-50/40 p-3.5 text-base leading-relaxed text-slate-900 placeholder:text-slate-500 focus:border-indigo-500 focus:bg-white focus:outline-none sm:min-h-36 sm:p-4 sm:text-lg" />
