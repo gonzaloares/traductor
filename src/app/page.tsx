@@ -141,10 +141,14 @@ function FeedbackPanel({ feedback, userAnswer, sentence, previousMastery, onNext
     if (teacherOpen) teacherInputRef.current?.focus()
   }, [teacherOpen])
   useEffect(() => {
-    if (teacherScrollRef.current) {
-      teacherScrollRef.current.scrollTop = teacherScrollRef.current.scrollHeight
-    }
-  }, [teacherMessages, teacherBusy])
+    const scroller = teacherScrollRef.current
+    const latestMessage = scroller?.lastElementChild
+    if (!scroller || !latestMessage) return
+
+    // Show each new question or answer from its first line, rather than
+    // jumping to the end of a long explanation.
+    scroller.scrollTop += latestMessage.getBoundingClientRect().top - scroller.getBoundingClientRect().top
+  }, [teacherMessages])
 
   const sendTeacherQuestion = async () => {
     const question = teacherQuestion.trim()
