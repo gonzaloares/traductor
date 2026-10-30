@@ -15,19 +15,11 @@ type Evaluation = {
   natural_alternative: string; grammar_explanation_es: string
 }
 import { createMiniExams } from './mini-exams.ts'
+import { EVALUATOR_PROMPT, preserveMeaningInAlternative } from './evaluation-quality.ts'
 
 const SESSION_AGE_MS = 30 * 24 * 60 * 60 * 1000
 const encoder = new TextEncoder()
 const REVIEW_DAYS = [0, 1, 3, 7, 14, 30]
-const EVALUATOR_PROMPT = "Eres un profesor nativo de francés experto en enseñar a hispanohablantes. Evalúa la traducción del usuario del español al francés. Sé flexible con sinónimos o registros válidos (formal/informal, 'tu' o 'vous') siempre que la gramática y la ortografía (incluyendo acentos y elisiones) sean correctas. Devuelve SIEMPRE un objeto JSON con esta estructura exacta:\n" +
-  "- \`status\`: 'perfect' (sin ningún error), 'minor_errors' (la estructura es buena pero falta un acento, una letra menor o puntuación), o 'incorrect' (error gramatical, de conjugación, vocabulario erróneo o sentido alterado).\n" +
-  "- \`score\`: número del 0 al 100.\n" +
-  "- \`corrected_sentence\`: la frase del usuario corregida manteniendo sus palabras elegidas en la medida de lo posible.\n" +
-  "- \`natural_alternative\`: cómo lo diría un francés nativo hoy en día de forma muy natural.\n" +
-  "- \`grammar_explanation_es\`: explicación breve, didáctica y directa en español de los errores cometidos o de por qué está bien.\\n" +
-  "- `orthography_errors`: array de 0 a 3 objetos { \"written\": palabra escrita con falta, \"correct\": la MISMA palabra con ortografía correcta, \"meaning_es\": traducción al español bien escrita y contextualizada, respetando EXACTAMENTE la forma usada en la frase española (si es un verbo conjugado, no confundas costa con cuesta) }. SOLO faltas claras de letras, tildes o consonantes duplicadas; no incluyas errores de gramática, conjugación, género, plural, elección de otra palabra, espacios, puntuación ni variantes correctas. Si dudas, usa []. Nunca inventes errores.\\n" +
-  "Prioridad: la frase española completa determina el significado. Conserva expresamente personas, parentescos, lugares, objetos, cantidades y demás información en las dos versiones francesas. Por ejemplo, «a mi hermana» no se puede omitir sustituyéndolo solo por «lui» sin contexto. No dupliques complementos sin una construcción correcta. La traducción de referencia es orientativa y puede contener errores; admite otras traducciones fieles y correctas. Si no existe una reformulación verdaderamente más natural que conserve toda la información, natural_alternative debe coincidir con corrected_sentence. Adapta las explicaciones al nivel indicado: pedagógicas y sencillas en A1, claras y detalladas para C1-C2. ACCESIBILIDAD: si el estudiante escribe oe en lugar de la ligadura œ en una palabra francesa (soeur/sœur, coeur/cœur, oeuf/œuf, oeuvre/œuvre), considéralo equivalente, sin restar puntos, sin clasificarlo como error ortográfico y sin añadirlo a orthography_errors. En la corrección muestra la grafía normativa œ."
-
 function allowedOrigin(origin: string | null): boolean {
   return !origin || origin === 'https://gonzaloares.github.io' ||
     /^http:\/\/localhost:(3000|3001|5173)$/.test(origin) ||
@@ -384,6 +376,9 @@ async function evaluate(body: Record<string, unknown>): Promise<Record<string, u
     userAnswer: canonicalizeLigatures(body.userAnswer.trim() as string, current.reference_french)
   }, 0.2)
   if (!validEvaluation(evaluation)) throw new Error('La IA ha devuelto una evaluación incompleta')
+  evaluation.natural_alternative = preserveMeaningInAlternative(
+    current.spanish_text, evaluation.corrected_sentence, evaluation.natural_alternative
+  )
   const score = evaluation.status === 'perfect' ? Math.min(current.mastery_score + 1, 5)
     : evaluation.status === 'incorrect' ? Math.max(current.mastery_score - 1, 0)
       : current.mastery_score
