@@ -16,5 +16,6 @@ jobs:
       - run: node --experimental-strip-types --test src/lib/translation-diff.test.mjs
       - run: node --experimental-strip-types --test src/lib/types.test.mjs
       - run: node --experimental-strip-types --test src/lib/grammar-topics.test.mjs
+      - run: node --experimental-strip-types --test supabase/functions/parole-api/evaluation-quality.test.mjs
       - run: npm run typecheck
       - run: npm run build
