@@ -18,6 +18,7 @@ jobs:
           cache: npm
       - run: npm ci --no-audit --no-fund
       - run: node --experimental-strip-types --test src/lib/grammar-topics.test.mjs
+      - run: node --experimental-strip-types --test supabase/functions/parole-api/evaluation-quality.test.mjs
       - run: npm run typecheck
       - run: npm run build
         env:
