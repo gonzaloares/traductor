@@ -351,6 +351,8 @@ export function MiniExam({ api, onExit, onFinished }: { api: API; onExit: () => 
         <p className="rounded-xl bg-slate-50 p-4 font-semibold leading-relaxed text-slate-900">{paper.writing_prompt}</p>
         <label htmlFor="exam-writing" className="block text-sm font-bold text-slate-700">Tu respuesta en francés</label>
         <textarea id="exam-writing" value={answers.writing} onChange={e => setAnswers(v=>({...v,writing:e.target.value}))}
+          autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false}
+          data-gramm="false" data-gramm_editor="false" data-enable-grammarly="false"
           maxLength={5000} rows={8} placeholder="Rédigez votre réponse ici..."
           className="w-full rounded-xl border border-slate-200 p-4 leading-relaxed text-slate-900 focus:border-indigo-500 focus:outline-none"/>
         <p className="text-right text-xs text-slate-500">{answers.writing.trim()?answers.writing.trim().split(/\s+/).length:0} palabras</p>
