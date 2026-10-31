@@ -78,6 +78,27 @@ function levelStyle(level: Level): string {
     : level === 'C1' ? 'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-100'
     : 'bg-rose-50 text-rose-700 border-rose-100'
 }
+function summarizeProgress(scores: PracticeScore[], filter: Filter) {
+  const history = scores.filter(score => filter === 'Todos' || score.level === filter)
+    .sort((a, b) => a.created_at.localeCompare(b.created_at) || a.practice_id.localeCompare(b.practice_id))
+  const mean = (items: PracticeScore[]): number | null =>
+    items.length ? Math.round(items.reduce((sum, item) => sum + item.score, 0) / items.length) : null
+  const last = history.slice(-20)
+  const before = history.slice(-40, -20)
+  const blocks: { start: number; end: number; value: number }[] = []
+  for (let i = 0; i < history.length; i += 20) {
+    const group = history.slice(i, i + 20)
+    blocks.push({ start: i + 1, end: i + group.length, value: mean(group) ?? 0 })
+  }
+  return {
+    total: history.length,
+    global: mean(history),
+    recent: mean(last),
+    change: last.length === 20 && before.length === 20 ? (mean(last) ?? 0) - (mean(before) ?? 0) : null,
+    blocks: blocks.slice(-10)
+  }
+}
+
 function Mastery({ score, showLabel = false }: { score: number; showLabel?: boolean }) {
   return <div className="flex items-center gap-2" aria-label={'Dominio ' + score + ' de 5'}>
     <div className="flex gap-1">{[0, 1, 2, 3, 4].map(i =>
@@ -427,6 +448,7 @@ export default function Page() {
   const [onlyFavorites, setOnlyFavorites] = useState(false)
   const [showHint, setShowHint] = useState(false)
   const [level, setLevel] = useState<Filter>('Todos')
+  const [chartLevel, setChartLevel] = useState<Filter>('Todos')
   const [sentences, setSentences] = useState<Sentence[]>([])
   const [scores, setScores] = useState<PracticeScore[]>([])
   const [scoresError, setScoresError] = useState('')
@@ -587,28 +609,10 @@ export default function Page() {
     }
   }), [scores])
 
-  // Only the first correction of a practice encounter contributes to the average.
-  // The id survives "Volver a intentar" but is renewed for a new encounter.
-  const progress = useMemo(() => {
-    const history = scores.filter(s => level === 'Todos' || s.level === level)
-      .sort((a, b) => a.created_at.localeCompare(b.created_at) || a.practice_id.localeCompare(b.practice_id))
-    const mean = (items: PracticeScore[]): number | null =>
-      items.length ? Math.round(items.reduce((sum, item) => sum + item.score, 0) / items.length) : null
-    const last = history.slice(-20)
-    const before = history.slice(-40, -20)
-    const blocks: { start: number; end: number; value: number }[] = []
-    for (let i = 0; i < history.length; i += 20) {
-      const group = history.slice(i, i + 20)
-      blocks.push({ start: i + 1, end: i + group.length, value: mean(group) ?? 0 })
-    }
-    return {
-      total: history.length,
-      global: mean(history),
-      recent: mean(last),
-      change: last.length === 20 && before.length === 20 ? (mean(last) ?? 0) - (mean(before) ?? 0) : null,
-      blocks: blocks.slice(-10)
-    }
-  }, [scores, level])
+  // The first answer to each encounter is recorded once. The global overview keeps
+  // the practice level filter, while the chart has its own independent level filter.
+  const progress = useMemo(() => summarizeProgress(scores, level), [scores, level])
+  const chartProgress = useMemo(() => summarizeProgress(scores, chartLevel), [scores, chartLevel])
 
   const spellActive = useMemo(() => spellWords.filter(w => w.state === 'active'), [spellWords])
   const spellDue = spellActive.filter(w => new Date(w.next_review_at).getTime() <= now)
@@ -934,7 +938,9 @@ export default function Page() {
         <h2 className="text-xl font-extrabold text-slate-900">Notas de tus traducciones</h2>
         <p className="mt-2 text-sm leading-relaxed text-slate-600">
           La nota media refleja tu primera respuesta a cada ejercicio, sin contar los reintentos inmediatos.
-          {level !== 'Todos' ? ' Estás viendo solo el nivel ' + level + '.' : ' Estás viendo todos los niveles.'}
+          {level !== 'Todos'
+            ? ' Las estadísticas generales muestran el nivel ' + level + '; la curva puede filtrarse por separado.'
+            : ' Las estadísticas generales incluyen todos los niveles; puedes filtrar la curva por separado.'}
         </p>
         {scoresError && <p className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-800" role="alert">{scoresError}</p>}
         <div className="mt-5 grid grid-cols-2 gap-3">
@@ -974,34 +980,50 @@ export default function Page() {
             </div>)}
           </div>
         </div>
-        {progress.total === 0
-          ? <p className="mt-5 text-sm text-slate-500">Aún no hay notas registradas para este nivel. Las notas anteriores a esta mejora no se pueden recuperar; el seguimiento comienza con tus próximas traducciones.</p>
-          : <div className="mt-6">
-              <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <h3 className="text-sm font-extrabold text-slate-800">Evolución de la nota media</h3>
-                <span className="text-xs font-medium text-slate-500">{progress.total} {progress.total === 1 ? 'primera respuesta' : 'primeras respuestas'} registradas</span>
-              </div>
-              <p className="mt-1 text-xs text-slate-500">Cada punto representa hasta 20 frases. Se muestran los últimos 10 bloques.</p>
-              <svg viewBox="0 0 580 185" className="mt-3 w-full" role="img" aria-label="Evolución de la puntuación media por bloques de veinte frases">
-                {[25, 85, 145].map((y, index) => <g key={y}>
-                  <line x1="35" x2="552" y1={y} y2={y} stroke="#e2e8f0" strokeDasharray="3 4" />
-                  <text x="27" y={y + 4} fontSize="11" fill="#64748b" textAnchor="end">{100 - index * 50}</text>
-                </g>)}
-                {progress.blocks.length > 1 && <polyline fill="none" stroke="#4f46e5" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round"
-                  points={progress.blocks.map((block, index) =>
-                    `${35 + index * 517 / (progress.blocks.length - 1)},${145 - block.value * 1.2}`).join(' ')} />}
-                {progress.blocks.map((block, index) => {
-                  const x = progress.blocks.length === 1 ? 294 : 35 + index * 517 / (progress.blocks.length - 1)
-                  const y = 145 - block.value * 1.2
-                  return <g key={block.start}>
-                    <circle cx={x} cy={y} r="5" fill="#4f46e5" stroke="white" strokeWidth="2" />
-                    <text x={x} y={Math.max(13, y - 12)} textAnchor="middle" fontSize="12" fontWeight="700" fill="#4338ca">{block.value}</text>
-                    <text x={x} y="169" textAnchor="middle" fontSize="10" fill="#64748b">{block.end}</text>
-                  </g>
-                })}
-              </svg>
-              <p className="text-center text-xs text-slate-500">Número de respuestas acumuladas</p>
-            </div>}
+        <div className="mt-6">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h3 className="text-sm font-extrabold text-slate-800">Evolución de la nota media</h3>
+            <span className="text-xs font-medium text-slate-500">{chartProgress.total} {chartProgress.total === 1 ? 'primera respuesta registrada' : 'primeras respuestas registradas'}{chartLevel !== 'Todos' ? ' · ' + chartLevel : ''}</span>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Filtrar la curva de progreso por nivel">
+            {(['Todos', ...LEVELS] as Filter[]).map(item => <button key={item} type="button"
+              onClick={() => setChartLevel(item)}
+              aria-pressed={chartLevel === item}
+              className={cn('min-w-12 rounded-xl px-3 py-2 text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2',
+                chartLevel === item
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'border border-slate-200 bg-white text-slate-600 hover:border-indigo-300 hover:bg-indigo-50')}>
+              {item}
+            </button>)}
+          </div>
+          {chartProgress.total === 0
+            ? <p className="mt-5 rounded-xl bg-slate-50 px-4 py-5 text-sm text-slate-600" role="status">
+                Todavía no hay primeras respuestas registradas {chartLevel === 'Todos' ? 'en el historial.' : 'en el nivel ' + chartLevel + '.'} La curva aparecerá al corregir ejercicios de este nivel por primera vez.
+              </p>
+            : <>
+                <p className="mt-3 text-xs text-slate-500">Cada punto representa hasta 20 frases{chartLevel === 'Todos' ? '' : ' de ' + chartLevel}. Se muestran los últimos 10 bloques.</p>
+                <svg viewBox="0 0 580 185" className="mt-3 w-full" role="img"
+                  aria-label={'Evolución de la puntuación media en ' + (chartLevel === 'Todos' ? 'todos los niveles' : 'el nivel ' + chartLevel) + ' por bloques de hasta veinte frases'}>
+                  {[25, 85, 145].map((y, index) => <g key={y}>
+                    <line x1="35" x2="552" y1={y} y2={y} stroke="#e2e8f0" strokeDasharray="3 4" />
+                    <text x="27" y={y + 4} fontSize="11" fill="#64748b" textAnchor="end">{100 - index * 50}</text>
+                  </g>)}
+                  {chartProgress.blocks.length > 1 && <polyline fill="none" stroke="#4f46e5" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round"
+                    points={chartProgress.blocks.map((block, index) =>
+                      `${35 + index * 517 / (chartProgress.blocks.length - 1)},${145 - block.value * 1.2}`).join(' ')} />}
+                  {chartProgress.blocks.map((block, index) => {
+                    const x = chartProgress.blocks.length === 1 ? 294 : 35 + index * 517 / (chartProgress.blocks.length - 1)
+                    const y = 145 - block.value * 1.2
+                    return <g key={block.start}>
+                      <circle cx={x} cy={y} r="5" fill="#4f46e5" stroke="white" strokeWidth="2" />
+                      <text x={x} y={Math.max(13, y - 12)} textAnchor="middle" fontSize="12" fontWeight="700" fill="#4338ca">{block.value}</text>
+                      <text x={x} y="169" textAnchor="middle" fontSize="10" fill="#64748b">{block.end}</text>
+                    </g>
+                  })}
+                </svg>
+                <p className="text-center text-xs text-slate-500">Número de respuestas acumuladas{chartLevel === 'Todos' ? '' : ' en ' + chartLevel}</p>
+              </>}
+        </div>
       </div>
       <div className="soft-shadow rounded-[24px] border border-slate-100 bg-white p-5 sm:p-8">
         <h2 className="text-xl font-extrabold text-slate-900">Estado de tu aprendizaje</h2>
