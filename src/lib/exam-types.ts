@@ -1,9 +1,10 @@
-import type { Level } from './types'
+import type { Level, Language } from './types'
 
 export type ExamQuestion = { prompt: string; options: string[] }
 export type ExamPaper = {
   id: string
   level: Level
+  language: Language
   started_at: string
   duration_minutes: number
   listening: { script: string; questions: ExamQuestion[] }
@@ -21,6 +22,7 @@ export type ExamAnswers = {
 export type ExamResult = {
   id: string
   level: Level
+  language: Language
   started_at: string
   completed_at: string
   duration_minutes: number

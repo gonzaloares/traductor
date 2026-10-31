@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ArrowLeft, ArrowRight, BookOpen, CheckCircle2, Clock3, GraduationCap, Headphones,
   Loader2, Mic, Pause, Play, RotateCcw, Send, Square, Volume2 } from 'lucide-react'
-import { LEVELS, type Level } from '@/lib/types'
+import { LEVELS, type Level, type Language } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { emptyExamAnswers, examMinutes, examParts, type ExamAnswers, type ExamHistoryResponse,
   type ExamPaper, type ExamResult } from '@/lib/exam-types'
@@ -28,19 +28,19 @@ function ScoreBreakdown({ result }: { result: ExamResult }) {
   </div>
 }
 
-export function ExamHistory({ api }: { api: API }) {
+export function ExamHistory({ api, language }: { api: API; language: Language }) {
   const [history, setHistory] = useState<ExamResult[]>([])
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState<string | null>(null)
   useEffect(() => {
     let alive = true
-    void api<ExamHistoryResponse>('/api/mini-exam-history')
+    void api<ExamHistoryResponse>('/api/mini-exam-history?language=' + language)
       .then(data => { if (alive) setHistory(data.history) })
       .catch(e => { if (alive) setError(e instanceof Error ? e.message : 'No se pudo cargar el historial.') })
       .finally(() => { if (alive) setLoading(false) })
     return () => { alive = false }
-  }, [api])
+  }, [api, language])
   return <section className="soft-shadow rounded-[24px] border border-slate-100 bg-white p-5 sm:p-8">
     <div className="flex items-center gap-2"><GraduationCap size={23} className="text-indigo-600" />
       <h2 className="text-xl font-extrabold text-slate-900">Mis mini-exámenes</h2></div>
@@ -69,7 +69,7 @@ export function ExamHistory({ api }: { api: API }) {
   </section>
 }
 
-export function MiniExam({ api, onExit, onFinished }: { api: API; onExit: () => void; onFinished: () => void }) {
+export function MiniExam({ api, language, onExit, onFinished }: { api: API; language: Language; onExit: () => void; onFinished: () => void }) {
   const [level, setLevel] = useState<Level>('A1')
   const [paper, setPaper] = useState<ExamPaper | null>(null)
   const [result, setResult] = useState<ExamResult | null>(null)
@@ -91,7 +91,7 @@ export function MiniExam({ api, onExit, onFinished }: { api: API; onExit: () => 
 
   useEffect(() => {
     activeRef.current = true
-    void api<ExamHistoryResponse>('/api/mini-exam-history')
+    void api<ExamHistoryResponse>('/api/mini-exam-history?language=' + language)
       .then(data => {
         if (!activeRef.current || !data.active) return
         setPaper(data.active)
@@ -115,7 +115,7 @@ export function MiniExam({ api, onExit, onFinished }: { api: API; onExit: () => 
       streamRef.current?.getTracks().forEach(track => track.stop())
       window.speechSynthesis?.cancel()
     }
-  }, [api])
+  }, [api, language])
 
   useEffect(() => {
     if (!paper || result) return
@@ -136,7 +136,7 @@ export function MiniExam({ api, onExit, onFinished }: { api: API; onExit: () => 
     setBusy(true); setError('')
     window.speechSynthesis?.cancel()
     try {
-      const data = await api<{ exam: ExamPaper }>('/api/mini-exam-start', request({ level }))
+      const data = await api<{ exam: ExamPaper }>('/api/mini-exam-start', request({ level, language }))
       setPaper(data.exam); setAnswers(emptyExamAnswers()); setResult(null)
       setStep(0); setSeconds(0); setListenCount(0)
     } catch(e) { setError(e instanceof Error ? e.message : 'No se pudo generar el examen.') }
@@ -151,11 +151,11 @@ export function MiniExam({ api, onExit, onFinished }: { api: API; onExit: () => 
     if (!paper || listenCount >= 2 || !('speechSynthesis' in window)) return
     window.speechSynthesis.cancel()
     const utterance = new SpeechSynthesisUtterance(paper.listening.script)
-    utterance.lang = 'fr-FR'
+    utterance.lang = language === 'en' ? 'en-GB' : 'fr-FR'
     utterance.rate = paper.level === 'A1' || paper.level === 'A2' ? 0.88 : 1
     const voices = window.speechSynthesis.getVoices()
-    utterance.voice = voices.find(v => v.lang.toLowerCase() === 'fr-fr')
-      ?? voices.find(v => v.lang.toLowerCase().startsWith('fr')) ?? null
+    utterance.voice = voices.find(v => v.lang.toLowerCase() === (language === 'en' ? 'en-gb' : 'fr-fr'))
+      ?? voices.find(v => v.lang.toLowerCase().startsWith(language)) ?? null
     window.speechSynthesis.speak(utterance)
     setListenCount(previous => previous + 1)
   }
@@ -208,7 +208,7 @@ export function MiniExam({ api, onExit, onFinished }: { api: API; onExit: () => 
         pieces.push(String.fromCharCode(...buffer.subarray(index, index + 8192)))
       }
       const data = await api<{ transcript: string }>('/api/mini-exam-transcribe',
-        request({ audio: btoa(pieces.join('')), mime }))
+        request({ audio: btoa(pieces.join('')), mime, language }))
       if (activeRef.current) setAnswers(previous => ({
         ...previous, speaking: data.transcript, speaking_mode: 'audio'
       }))
@@ -275,9 +275,9 @@ export function MiniExam({ api, onExit, onFinished }: { api: API; onExit: () => 
   if (!paper) return <section className="mt-5 space-y-4">
     <div className="soft-shadow rounded-3xl border border-slate-100 bg-white p-5 sm:p-8">
       <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600"><GraduationCap size={25}/></div>
-      <h2 className="text-2xl font-extrabold text-slate-900">Mini-examen de francés</h2>
+      <h2 className="text-2xl font-extrabold text-slate-900">Mini-examen de {language === 'en' ? 'inglés' : 'francés'}</h2>
       <p className="mt-2 text-sm leading-relaxed text-slate-600">
-        Cuatro competencias: comprensión oral, comprensión escrita, expresión escrita y expresión oral. Una prueba breve inspirada en DELF/DALF, sin valor de certificación.
+        Cuatro competencias: comprensión oral, comprensión escrita, expresión escrita y expresión oral. Una prueba breve orientativa, inspirada en {language === 'en' ? 'Cambridge English' : 'DELF/DALF'}, sin valor de certificación.
       </p>
       <p className="mt-4 text-sm font-bold text-slate-800">Selecciona el nivel</p>
       <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-6" role="group" aria-label="Nivel del examen">
@@ -319,12 +319,12 @@ export function MiniExam({ api, onExit, onFinished }: { api: API; onExit: () => 
           className={cn('h-2 flex-1 rounded-full', index <= step ? 'bg-indigo-500' : 'bg-slate-200')}/>)}
       </div>
       {step === 0 && <div className="mt-6 space-y-5">
-        <p className="text-sm text-slate-600">Escucha el fragmento en francés y responde a las dos preguntas. Puedes reproducirlo dos veces. No se mostrará la transcripción hasta terminar.</p>
+        <p className="text-sm text-slate-600">Escucha el fragmento en {language === 'en' ? 'inglés' : 'francés'} y responde a las dos preguntas. Puedes reproducirlo dos veces. No se mostrará la transcripción hasta terminar.</p>
         <button type="button" onClick={playAudio} disabled={listenCount >= 2 || !('speechSynthesis' in window)}
           className="flex w-full items-center justify-center gap-3 rounded-xl bg-indigo-50 p-4 font-bold text-indigo-700 disabled:opacity-50">
           <Headphones size={22}/> {listenCount < 2 ? 'Escuchar audio' : 'Dos reproducciones realizadas'}
         </button>
-        <p className="text-center text-xs text-slate-500">Reproducciones: {listenCount}/2 · Voz francesa del dispositivo</p>
+        <p className="text-center text-xs text-slate-500">Reproducciones: {listenCount}/2 · Voz {language === 'en' ? 'inglesa' : 'francesa'} del dispositivo</p>
         {paper.listening.questions.map((question,i) => <div key={i} className="space-y-2 border-t border-slate-100 pt-4">
           <p className="font-semibold leading-relaxed text-slate-900">{i+1}. {question.prompt}</p>
           {question.options.map((option,j) => <label key={j} className={cn('flex cursor-pointer items-start gap-3 rounded-xl border p-3 text-sm',
@@ -347,20 +347,20 @@ export function MiniExam({ api, onExit, onFinished }: { api: API; onExit: () => 
         </div>)}
       </div>}
       {step === 2 && <div className="mt-6 space-y-4">
-        <p className="text-xs font-bold uppercase tracking-widest text-indigo-600">Rédaction</p>
+        <p className="text-xs font-bold uppercase tracking-widest text-indigo-600">{language === 'en' ? 'Writing' : 'Rédaction'}</p>
         <p className="rounded-xl bg-slate-50 p-4 font-semibold leading-relaxed text-slate-900">{paper.writing_prompt}</p>
-        <label htmlFor="exam-writing" className="block text-sm font-bold text-slate-700">Tu respuesta en francés</label>
+        <label htmlFor="exam-writing" className="block text-sm font-bold text-slate-700">Tu respuesta en {language === 'en' ? 'inglés' : 'francés'}</label>
         <textarea id="exam-writing" value={answers.writing} onChange={e => setAnswers(v=>({...v,writing:e.target.value}))}
           autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false}
           data-gramm="false" data-gramm_editor="false" data-enable-grammarly="false"
-          maxLength={5000} rows={8} placeholder="Rédigez votre réponse ici..."
+          maxLength={5000} rows={8} placeholder={language === 'en' ? 'Write your answer here...' : 'Rédigez votre réponse ici...'}
           className="w-full rounded-xl border border-slate-200 p-4 leading-relaxed text-slate-900 focus:border-indigo-500 focus:outline-none"/>
         <p className="text-right text-xs text-slate-500">{answers.writing.trim()?answers.writing.trim().split(/\s+/).length:0} palabras</p>
       </div>}
       {step === 3 && <div className="mt-6 space-y-4">
-        <p className="text-xs font-bold uppercase tracking-widest text-indigo-600">Expression orale</p>
+        <p className="text-xs font-bold uppercase tracking-widest text-indigo-600">{language === 'en' ? 'Speaking' : 'Expression orale'}</p>
         <p className="rounded-xl bg-slate-50 p-4 font-semibold leading-relaxed text-slate-900">{paper.speaking_prompt}</p>
-        <p className="text-sm leading-relaxed text-slate-600">Habla en francés durante aproximadamente 45–80 segundos. El audio se envía para transcribirlo y no se conserva en Parole.</p>
+        <p className="text-sm leading-relaxed text-slate-600">Habla en {language === 'en' ? 'inglés' : 'francés'} durante aproximadamente 45–80 segundos. El audio se envía para transcribirlo y no se conserva en Parole.</p>
         {recording ? <button type="button" onClick={stopRecording}
           className="flex w-full items-center justify-center gap-2 rounded-xl bg-rose-600 p-4 font-bold text-white">
           <Square size={18}/> Detener grabación

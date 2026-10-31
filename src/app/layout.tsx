@@ -3,8 +3,8 @@ import './globals.css'
 import PwaRegistration from '@/components/PwaRegistration'
 
 export const metadata: Metadata = {
-  title: 'Parole — Practica francés de verdad',
-  description: 'Traduce del español al francés, recibe correcciones inteligentes y aprende con repetición espaciada.',
+  title: 'Parole — Practica francés e inglés',
+  description: 'Traduce del español al francés o al inglés, recibe correcciones inteligentes y aprende con repetición espaciada.',
   applicationName: 'Parole',
   manifest: '/traductor/manifest.webmanifest',
   appleWebApp: { capable: true, title: 'Parole', statusBarStyle: 'default' },

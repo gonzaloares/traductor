@@ -9,7 +9,7 @@ import {
   X, XCircle, AlertTriangle, Star, CalendarDays, Home, BarChart3, Bookmark
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { LEVELS, type EvaluationResponse, type Level, type Sentence, type Status, type PracticeScore, type OrthographyWord, type OrthographyReviewResponse } from '@/lib/types'
+import { LEVELS, type EvaluationResponse, type Level, type Language, type Sentence, type Status, type PracticeScore, type OrthographyWord, type OrthographyReviewResponse } from '@/lib/types'
 import { compareTranslations, type DiffPart } from '@/lib/translation-diff'
 import { ALL_GRAMMAR_TOPICS, CUSTOM_GRAMMAR_TOPIC, topicsForLevel, selectedGrammarTopic } from '@/lib/grammar-topics'
 import { MiniExam, ExamHistory } from '@/components/MiniExam'
@@ -24,6 +24,7 @@ const NAV_ITEMS = [
   { view: 'progress', label: 'Progreso', icon: BarChart3 },
 ] as const
 const FAVORITES_KEY = 'parole_favorites_v1'
+const LANGUAGE_KEY = 'parole_language_v1'
 const CHARACTERS = ['é', 'è', 'ê', 'ë', 'à', 'â', 'ù', 'û', 'ç', 'œ', 'î', 'ï', "'"]
 const FUNCTION_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
   ? process.env.NEXT_PUBLIC_SUPABASE_URL + '/functions/v1/parole-api'
@@ -35,9 +36,10 @@ async function api<T>(url: string, init?: RequestInit): Promise<T> {
   if (!FUNCTION_URL || !PUBLIC_KEY) {
     throw new Error('Faltan NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY en la compilación.')
   }
-  const action = url.replace(/^\/api\//, '')
+  const pathAndQuery = url.replace(/^\/api\//, '')
+  const [action, query] = pathAndQuery.split('?')
   const session = localStorage.getItem(SESSION_KEY) ?? ''
-  const res = await fetch(FUNCTION_URL + '?action=' + encodeURIComponent(action), {
+  const res = await fetch(FUNCTION_URL + '?action=' + encodeURIComponent(action) + (query ? '&' + query : ''), {
     ...init,
     cache: 'no-store',
     headers: {
@@ -150,6 +152,8 @@ function FeedbackPanel({ feedback, userAnswer, sentence, previousMastery, onNext
   onFavorite: () => void
   isFavorite: boolean
 }) {
+  const targetLanguage = sentence.language === 'en' ? 'inglés' : 'francés'
+  const targetVoice = sentence.language === 'en' ? 'en-GB' : 'fr-FR'
   const [teacherOpen, setTeacherOpen] = useState(false)
   const [teacherQuestion, setTeacherQuestion] = useState('')
   const [teacherMessages, setTeacherMessages] = useState<{ role: 'user' | 'assistant'; content: string }[]>([])
@@ -299,7 +303,7 @@ function FeedbackPanel({ feedback, userAnswer, sentence, previousMastery, onNext
             <p className="lesson-text text-[19px] leading-relaxed text-slate-900 sm:text-[22px]">
               <ComparisonText parts={comparison.corrected} side="corrected" />
             </p>
-            <SpeakButton text={feedback.corrected_sentence} />
+            <SpeakButton text={feedback.corrected_sentence} lang={targetVoice} label={'Escuchar en ' + targetLanguage} />
           </div>
         </div>
       </div>
@@ -331,13 +335,13 @@ function FeedbackPanel({ feedback, userAnswer, sentence, previousMastery, onNext
         </div>
         <div className="flex items-start justify-between gap-3">
           <p className="lesson-text text-[19px] leading-relaxed text-slate-900 sm:text-[22px]">{feedback.natural_alternative}</p>
-          <SpeakButton text={feedback.natural_alternative} />
+          <SpeakButton text={feedback.natural_alternative} lang={targetVoice} label={'Escuchar en ' + targetLanguage} />
         </div>
       </div>
     ) : (
       <div className="flex items-start gap-2 rounded-2xl border border-indigo-100 bg-indigo-50/60 px-4 py-3 text-sm leading-relaxed text-indigo-700">
         <Sparkles size={17} className="mt-0.5 shrink-0" />
-        <span>La frase corregida ya suena natural en francés. No necesita otra reformulación.</span>
+        <span>La frase corregida ya suena natural en {targetLanguage}. No necesita otra reformulación.</span>
       </div>
     )}
     <div className="flex items-start gap-3 rounded-2xl bg-white p-1">
@@ -378,7 +382,7 @@ function FeedbackPanel({ feedback, userAnswer, sentence, previousMastery, onNext
         </p>}
         {teacherError && <p className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-800" role="alert">{teacherError}</p>}
         <form onSubmit={event => { event.preventDefault(); void sendTeacherQuestion() }} className="space-y-2">
-          <label htmlFor="teacher-question" className="sr-only">Tu pregunta al profesor de francés</label>
+          <label htmlFor="teacher-question" className="sr-only">Tu pregunta al profesor de {targetLanguage}</label>
           <textarea id="teacher-question" ref={teacherInputRef} rows={2} maxLength={800}
             value={teacherQuestion} onChange={event => setTeacherQuestion(event.target.value)}
             onKeyDown={event => {
@@ -433,6 +437,9 @@ function Login({ onLogin, busy, error }: { onLogin: (pin: string) => Promise<voi
 
 export default function Page() {
   const [view, setView] = useState<View>('practice')
+  const [language, setLanguage] = useState<Language>('fr')
+  const loadVersionRef = useRef(0)
+  const languageName = language === 'en' ? 'inglés' : 'francés'
   const [reviewWeak, setReviewWeak] = useState(false)
   const [reviewMode, setReviewMode] = useState<'sentences' | 'orthography'>('sentences')
   const [spellWords, setSpellWords] = useState<OrthographyWord[]>([])
@@ -482,13 +489,16 @@ export default function Page() {
   const practiceIdRef = useRef<string | null>(null)
 
   const load = useCallback(async () => {
+    const version = ++loadVersionRef.current
     setLoading(true)
     try {
-      const data = await api<{ sentences: Sentence[] }>('/api/sentences')
+      const data = await api<{ sentences: Sentence[] }>('/api/sentences?language=' + language)
+      if (version !== loadVersionRef.current) return
       setSentences(data.sentences)
       setError('')
       try {
-        const history = await api<{ scores: PracticeScore[] }>('/api/scores')
+        const history = await api<{ scores: PracticeScore[] }>('/api/scores?language=' + language)
+        if (version !== loadVersionRef.current) return
         setScores(history.scores)
         setScoresError('')
       } catch {
@@ -496,16 +506,17 @@ export default function Page() {
         setScoresError('No se ha podido cargar el historial de notas. Vuelve a abrir Parole.')
       }
       try {
-        const spelling = await api<{ words: OrthographyWord[] }>('/api/orthography')
+        const spelling = await api<{ words: OrthographyWord[] }>('/api/orthography?language=' + language)
+        if (version !== loadVersionRef.current) return
         setSpellWords(spelling.words)
         setSpellError('')
       } catch {
         setSpellError('No se ha podido sincronizar la ortografía. Prueba a actualizar.')
       }
       setNow(Date.now())
-    } catch (e) { setError(e instanceof Error ? e.message : 'No se pudieron cargar las frases') }
-    finally { setLoading(false) }
-  }, [])
+    } catch (e) { if (version === loadVersionRef.current) setError(e instanceof Error ? e.message : 'No se pudieron cargar las frases') }
+    finally { if (version === loadVersionRef.current) setLoading(false) }
+  }, [language])
 
   useEffect(() => {
     let alive = true
@@ -522,6 +533,12 @@ export default function Page() {
     return () => { alive = false }
   }, [])
   useEffect(() => { if (authorized) void load() }, [authorized, load])
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(LANGUAGE_KEY)
+      if (saved === 'en') setLanguage('en')
+    } catch { /* Language preference is optional. */ }
+  }, [])
   useEffect(() => {
     try {
       const saved: unknown = JSON.parse(localStorage.getItem(FAVORITES_KEY) ?? '[]')
@@ -702,6 +719,22 @@ export default function Page() {
     setLevel(value); setActiveId(null); setFeedback(null); setAnswer(''); setShowUpcoming(false)
     setReviewSeen([]); setShowHint(false)
   }
+  const changeLanguage = (next: Language) => {
+    if (next === language) return
+    ++loadVersionRef.current
+    setLanguage(next)
+    try { localStorage.setItem(LANGUAGE_KEY, next) } catch { /* Optional preference */ }
+    practiceIdRef.current = null
+    setLoading(true); setSentences([]); setScores([]); setSpellWords([])
+    setView('practice'); setLevel('Todos'); setChartLevel('Todos')
+    setActiveId(null); setFeedback(null); setAnswer(''); setShowHint(false); setShowUpcoming(false)
+    setReviewSeen([]); setReviewWeak(false); setReviewMode('sentences')
+    setSpellResult(null); setSpellSeen([]); setSpellAnswer(''); setSpellAhead(false)
+    setGenTopic(ALL_GRAMMAR_TOPICS); setGenCustomTopic('')
+    setGeneratorOpen(false); setNotice(''); setError(''); setScoresError(''); setSpellError('')
+    window.speechSynthesis?.cancel()
+    window.scrollTo({ top: 0, behavior: 'auto' })
+  }
   const insertCharacter = (char: string) => {
     const target = textareaRef.current
     if (!target) { setAnswer(v => v + char); return }
@@ -729,14 +762,14 @@ export default function Page() {
       })
       setPreviousMastery(current.mastery_score)
       setFeedback(result)
-      setSentences(previous => previous.map(s => s.id === result.sentence.id ? result.sentence : s))
-      if (result.scoreRecord) {
+      if (result.sentence.language === language) setSentences(previous => previous.map(s => s.id === result.sentence.id ? result.sentence : s))
+      if (result.scoreRecord && result.sentence.language === language) {
         setScores(previous => previous.some(s => s.practice_id === result.scoreRecord?.practice_id)
           ? previous : [...previous, result.scoreRecord!])
       }
       if ((result.orthographySaved ?? 0) > 0) {
-        void api<{ words: OrthographyWord[] }>('/api/orthography')
-          .then(data => setSpellWords(data.words))
+        void api<{ words: OrthographyWord[] }>('/api/orthography?language=' + language)
+          .then(data => { if (result.sentence.language === language) setSpellWords(data.words) })
           .catch(() => setSpellError('La ortografía se guardó, pero falta sincronizarla.'))
       }
       setNow(Date.now())
@@ -801,7 +834,7 @@ export default function Page() {
     setGenerating(true); setError('')
     try {
       const result = await api<{ sentences: Sentence[]; insertedCount: number }>('/api/generate-batch', {
-        method: 'POST', body: JSON.stringify({ level: genLevel, topic, count: genCount })
+        method: 'POST', body: JSON.stringify({ level: genLevel, topic, count: genCount, language })
       })
       setSentences(prev => {
         const ids = new Set(prev.map(s => s.id))
@@ -831,7 +864,7 @@ export default function Page() {
       <div className="flex min-w-0 items-center gap-2 sm:gap-3">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-xl font-black text-white shadow-md shadow-indigo-200 sm:h-11 sm:w-11 sm:rounded-2xl">P<span className="text-amber-300">.</span></div>
         <div><div className="text-[19px] font-extrabold tracking-tight text-slate-900 sm:text-[22px]">parole<span className="text-indigo-600">.</span></div>
-          <p className="hidden text-[11px] font-medium tracking-wide text-slate-500 sm:block">FRANCÉS ACTIVO · A1—C2</p></div>
+          <p className="hidden text-[11px] font-medium tracking-wide text-slate-500 sm:block">{language === 'en' ? 'INGLÉS' : 'FRANCÉS'} ACTIVO · A1—C2</p></div>
       </div>
       {view === 'exam' ? <span className="text-sm font-bold text-indigo-700">Mini-examen</span> : view === 'practice' ? <button type="button" onClick={() => void load()} disabled={loading} aria-label="Sincronizar" title="Sincronizar con la nube"
           className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500">
@@ -841,6 +874,19 @@ export default function Page() {
         <Sparkles size={17} /> <span className="hidden sm:inline">Generar nuevas frases con IA</span><span className="sm:hidden">Generar con IA</span>
       </button>}
     </header>
+
+    <div className="mt-3 flex items-center justify-between gap-2 rounded-2xl border border-slate-200 bg-white p-2 sm:mt-5" role="group" aria-label="Idioma de aprendizaje">
+      <span className="pl-2 text-xs font-bold text-slate-500 sm:text-sm">Idioma</span>
+      <div className="flex flex-1 justify-end gap-2 sm:flex-initial">
+        {([{ id: 'fr', flag: '🇫🇷', name: 'Francés' }, { id: 'en', flag: '🇬🇧', name: 'Inglés' }] as const).map(option =>
+          <button type="button" key={option.id} onClick={() => changeLanguage(option.id)}
+            aria-pressed={language === option.id}
+            className={cn('inline-flex min-h-10 items-center justify-center gap-1.5 rounded-xl px-3 text-sm font-bold transition sm:px-5',
+              language === option.id ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200')}>
+            <span aria-hidden="true">{option.flag}</span>{option.name}
+          </button>)}
+      </div>
+    </div>
 
     {notice && <div className="mt-5 flex items-center justify-between rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800" role="status">
       <span className="flex items-center gap-2"><Check size={17} />{notice}</span>
@@ -865,7 +911,7 @@ export default function Page() {
     {view !== 'practice' && view !== 'exam' && <div className="mt-5 flex items-center justify-between gap-2 sm:mt-7 sm:flex-wrap sm:items-end sm:gap-5">
       <div>
         <div className="mb-3 hidden items-center gap-2 rounded-full bg-indigo-50 px-3 py-1.5 text-xs font-bold text-indigo-600 sm:inline-flex">
-          <Star size={13} fill="currentColor" /> Un poco cada día, mucho francés
+          <Star size={13} fill="currentColor" /> Un poco cada día, mucho {languageName}
         </div>
         <h1 className="text-[21px] font-extrabold tracking-tight text-slate-900 sm:text-4xl">
           <span className="sm:hidden">{view === 'home' ? 'Tu inicio' : view === 'review' ? 'Tus repasos' : view === 'bank' ? 'Mis frases' : 'Tu progreso'}</span>
@@ -902,7 +948,7 @@ export default function Page() {
     
     {view === 'home' ? <section className="mt-5 space-y-5 sm:mt-7">
       <div className="soft-shadow rounded-[24px] border border-indigo-100 bg-white p-5 sm:p-8">
-        <p className="text-xs font-bold uppercase tracking-widest text-indigo-600">Tu francés, día a día</p>
+        <p className="text-xs font-bold uppercase tracking-widest text-indigo-600">Tu {languageName}, día a día</p>
         <h2 className="mt-2 text-2xl font-extrabold text-slate-900">¿Qué hacemos hoy?</h2>
         <p className="mt-2 text-sm text-slate-600">Traduce frases, recupera las que necesitas repasar y consolida tu gramática.</p>
         <div className="mt-5 grid grid-cols-2 gap-3">
@@ -1050,11 +1096,11 @@ export default function Page() {
           </div>)}
         </div>
       </div>
-      <ExamHistory api={api} />
+      <ExamHistory api={api} language={language} key={language} />
       <button type="button" onClick={() => navigate('review')} className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 p-4 font-bold text-white">
         <RotateCcw size={19} /> Repasar frases pendientes
       </button>
-    </section> : view === 'exam' ? <MiniExam api={api} onExit={() => navigate('home')} onFinished={() => setNotice('Mini-examen guardado en Progreso.')} /> : view === 'review' && reviewMode === 'orthography' ? <section className="mt-4 space-y-4">
+    </section> : view === 'exam' ? <MiniExam api={api} language={language} key={language} onExit={() => navigate('home')} onFinished={() => setNotice('Mini-examen guardado en Progreso.')} /> : view === 'review' && reviewMode === 'orthography' ? <section className="mt-4 space-y-4">
       <div className="soft-shadow rounded-[24px] border border-slate-100 bg-white p-5 sm:p-8">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
           <div>
@@ -1068,19 +1114,19 @@ export default function Page() {
         {spellError && <p className="mb-4 rounded-xl bg-rose-50 p-3 text-sm text-rose-800" role="alert">{spellError}</p>}
         {spellCurrent ? <>
           <div className="rounded-2xl bg-slate-50 p-4 sm:p-6">
-            <p className="text-xs font-bold uppercase tracking-wider text-indigo-600">Escribe la palabra que falta en francés</p>
+            <p className="text-xs font-bold uppercase tracking-wider text-indigo-600">Escribe la palabra que falta en {languageName}</p>
             <h3 className="mt-2 text-xl font-bold leading-relaxed text-slate-900 sm:text-2xl">
               {spellCurrent.context_es?.trim() || spellCurrent.meaning_es}
             </h3>
             <p className="mt-3 text-base leading-relaxed text-slate-600">{spellCurrent.context_fr}</p>
           </div>
           <form onSubmit={submitSpelling} className="mt-5 space-y-3">
-            <label htmlFor="spell-input" className="sr-only">Escribe la palabra en francés</label>
+            <label htmlFor="spell-input" className="sr-only">Escribe la palabra en {languageName}</label>
             <input id="spell-input" ref={spellInputRef} type="text" autoComplete="off" autoCorrect="off"
               autoCapitalize="off" spellCheck={false}
               data-gramm="false" data-gramm_editor="false" data-enable-grammarly="false" disabled={spellBusy || spellResult !== null}
               value={spellAnswer} onChange={event => setSpellAnswer(event.target.value)}
-              placeholder="Escribe en francés..."
+              placeholder={'Escribe en ' + languageName + '...'}
               className="block w-full rounded-xl border-2 border-slate-200 bg-white px-4 py-4 text-lg text-slate-900 outline-none focus:border-indigo-500 disabled:bg-slate-50" />
             {/[œŒ]/u.test(spellCurrent.correct_word) && <p className="text-xs text-slate-500">Puedes escribir oe en lugar de œ; la forma correcta seguirá apareciendo en la solución.</p>}
             {!spellResult && <button type="submit" disabled={!spellAnswer.trim() || spellBusy}
@@ -1194,7 +1240,7 @@ export default function Page() {
           </div>}
           <div className="mt-5 sm:mt-7">
             <div className={cn('mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-[.16em] text-indigo-600 sm:mb-3', view === 'practice' && 'sr-only')}>
-              <MessageCircle size={16} /> Traduce al francés
+              <MessageCircle size={16} /> Traduce al {languageName}
             </div>
             <h2 className="lesson-text text-[26px] leading-[1.35] font-medium tracking-tight text-slate-900 sm:text-[34px]">
               {current.spanish_text}
@@ -1219,7 +1265,7 @@ export default function Page() {
               autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false}
               data-gramm="false" data-gramm_editor="false" data-enable-grammarly="false"
               onKeyDown={keyDown} onFocus={() => setIsTyping(true)} onBlur={() => setIsTyping(false)}
-              rows={3} disabled={submitting} placeholder="Escribe tu traducción en francés..."
+              rows={3} disabled={submitting} placeholder={'Escribe tu traducción en ' + languageName + '...'}
               className="block min-h-28 w-full resize-y rounded-2xl border-2 border-slate-200 bg-slate-50/40 p-3.5 text-base leading-relaxed text-slate-900 placeholder:text-slate-500 focus:border-indigo-500 focus:bg-white focus:outline-none sm:min-h-36 sm:p-4 sm:text-lg" />
             <div className={cn('mt-3 flex flex-wrap items-center justify-between gap-3 sm:mt-6', isTyping && answer.trim() && 'max-sm:hidden')}>
               <span className="hidden items-center gap-1.5 text-xs text-slate-500 sm:flex"><Keyboard size={16} /> Enter para enviar</span>
@@ -1229,14 +1275,14 @@ export default function Page() {
                 {submitting ? 'Corrigiendo...' : 'Enviar'}
               </button>
             </div>
-            <details className="mt-3 text-sm sm:mt-4">
+            {language === 'fr' && <details className="mt-3 text-sm sm:mt-4">
               <summary className="w-fit cursor-pointer rounded-lg px-2 py-1 text-xs font-semibold text-slate-500 hover:text-indigo-600">Caracteres franceses</summary>
               <div className="mt-2 flex flex-wrap gap-1.5" aria-label="Caracteres franceses">
                 {CHARACTERS.map(ch => <button type="button" key={ch} onClick={() => insertCharacter(ch)}
                   disabled={submitting} aria-label={'Insertar ' + ch}
                   className="flex h-9 min-w-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-2 text-sm font-bold text-slate-700 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-600 disabled:opacity-50">{ch}</button>)}
               </div>
-            </details>
+            </details>}
             {isTyping && answer.trim() && <div className="fixed inset-x-0 z-40 border-t border-slate-200 bg-white/95 px-4 py-2.5 shadow-lg backdrop-blur sm:hidden"
               style={{ bottom: keyboardInset }}>
               <button type="button" disabled={submitting} onPointerDown={event => event.preventDefault()}
@@ -1326,7 +1372,7 @@ export default function Page() {
     </section>}
 
     {view !== 'practice' && view !== 'exam' && <footer className="mt-10 flex flex-wrap justify-center gap-2 text-center text-xs text-slate-500">
-      <span>Parole · aprende francés con práctica deliberada</span><span>·</span><span>Progreso sincronizado en Supabase</span>
+      <span>Parole · aprende {languageName} con práctica deliberada</span><span>·</span><span>Progreso sincronizado en Supabase</span>
     </footer>}
 
     {view !== 'exam' && <nav aria-label="Navegación principal" className={cn('fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 shadow-[0_-6px_24px_rgba(15,23,42,.07)] backdrop-blur sm:hidden', isTyping && 'hidden')}
@@ -1357,7 +1403,7 @@ export default function Page() {
         <form onSubmit={generate} className="mt-7 space-y-5">
           <div>
             <p className="mb-2 text-sm font-bold text-slate-700">Nivel</p>
-            <div role="group" aria-label="Nivel de francés" className="grid grid-cols-3 gap-2 sm:grid-cols-6">{LEVELS.map(v =>
+            <div role="group" aria-label="Nivel de {languageName}" className="grid grid-cols-3 gap-2 sm:grid-cols-6">{LEVELS.map(v =>
               <button type="button" key={v} aria-pressed={genLevel === v}
                 onClick={() => { setGenLevel(v); setGenTopic(ALL_GRAMMAR_TOPICS); setGenCustomTopic('') }}
                 className={cn('rounded-xl border-2 py-3 text-sm font-extrabold',
@@ -1368,13 +1414,13 @@ export default function Page() {
             <select id="gen-topic" value={genTopic} onChange={e => setGenTopic(e.target.value)}
               className="w-full min-w-0 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none focus:border-indigo-500">
               <option value={ALL_GRAMMAR_TOPICS}>{ALL_GRAMMAR_TOPICS}</option>
-              {topicsForLevel(genLevel).map(topic => <option key={topic} value={topic}>{topic}</option>)}
+              {topicsForLevel(genLevel, language).map(topic => <option key={topic} value={topic}>{topic}</option>)}
               <option value={CUSTOM_GRAMMAR_TOPIC}>{CUSTOM_GRAMMAR_TOPIC}</option>
             </select>
             {genTopic === CUSTOM_GRAMMAR_TOPIC ? <div className="mt-3">
               <label htmlFor="gen-custom-topic" className="mb-1.5 block text-xs font-bold text-slate-600">Especifica el tema</label>
               <input id="gen-custom-topic" value={genCustomTopic} onChange={e => setGenCustomTopic(e.target.value)}
-                autoFocus maxLength={100} required minLength={2} placeholder="Ej.: la diferencia entre depuis y pendant"
+                autoFocus maxLength={100} required minLength={2} placeholder={language === 'en' ? 'Ej.: present perfect frente a past simple' : 'Ej.: la diferencia entre depuis y pendant'}
                 className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none focus:border-indigo-500" />
             </div> : <p className="mt-2 text-xs text-slate-500">
               {genTopic === ALL_GRAMMAR_TOPICS

@@ -1,9 +1,11 @@
 export type Level = 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2'
+export type Language = 'fr' | 'en'
 export type Status = 'perfect' | 'minor_errors' | 'incorrect'
 export interface Sentence {
   id: string
   spanish_text: string
   reference_french: string
+  language: Language
   level: Level
   grammar_topic: string
   source: 'seed' | 'ai_generated'
@@ -23,6 +25,7 @@ export interface Evaluation {
 export interface PracticeScore {
   practice_id: string
   sentence_id: string
+  language: Language
   level: Level
   score: number
   created_at: string
@@ -35,6 +38,7 @@ export interface OrthographyWord {
   meaning_es: string
   context_es: string | null
   context_fr: string
+  language: Language
   level: Level
   mastery_score: number
   times_practiced: number

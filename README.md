@@ -1,6 +1,6 @@
-# Parole — francés activo en GitHub Pages
+# Parole — francés e inglés activos en GitHub Pages
 
-**Parole** es una aplicación de traducción activa español → francés para los seis niveles del MCER (A1, A2, B1, B2, C1 y C2). Sus datos se sincronizan en Supabase mediante un algoritmo de repetición espaciada (SRS). La corrección de las respuestas y la generación de nuevas frases se realizan con **OpenAI `gpt-4o-mini`**.
+**Parole** es una aplicación de traducción activa español → francés o inglés, con progresos totalmente independientes para cada idioma, para los seis niveles del MCER (A1, A2, B1, B2, C1 y C2). Sus datos se sincronizan en Supabase mediante un algoritmo de repetición espaciada (SRS). La corrección de las respuestas y la generación de nuevas frases se realizan con **OpenAI `gpt-4o-mini`**.
 
 ## Instalar Parole como aplicación (PWA)
 
@@ -109,3 +109,10 @@ La versión inicial de la Edge Function se ha desplegado por separado desde esta
 - **Página 404:** verifica que GitHub Pages esté configurado con **GitHub Actions** y comprueba el workflow.
 - **El banco aparece vacío:** comprueba la sesión PIN y la tabla `sentences` de Supabase.
 - **Acceso caducado:** vuelve a introducir el PIN en el dispositivo.
+
+
+## Dos idiomas en una sola aplicación
+
+El selector Francés / Inglés permite cambiar de idioma desde cualquier pantalla. Cada lengua mantiene por separado sus frases, niveles, calificaciones, curvas de progreso, repasos SRS, palabras para ortografía y mini-exámenes. El contenido francés preexistente se conserva sin reiniciar el progreso.
+
+La migración `supabase/migrations/20261031_add_english_language.sql` añade `language='fr'` por defecto a los datos existentes y carga 24 frases iniciales en inglés. `reference_french` y `context_fr` conservan sus nombres heredados por compatibilidad: el contenido de esos campos es inglés cuando `language='en'`. Los endpoints GET admiten el parámetro `language` y los POST de generación y mini-examen incluyen `language` en el cuerpo.
