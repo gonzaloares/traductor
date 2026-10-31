@@ -1,4 +1,4 @@
-import type { Level } from './types.ts'
+import type { Level, Language } from './types.ts'
 
 export const ALL_GRAMMAR_TOPICS = 'Todos los temas (variados)'
 export const CUSTOM_GRAMMAR_TOPIC = 'Otro tema…'
@@ -110,10 +110,21 @@ export const GRAMMAR_TOPICS: Record<Level, readonly string[]> = {
   ]
 }
 
-export function topicsForLevel(level: Level): readonly string[] {
-  return GRAMMAR_TOPICS[level]
+export function topicsForLevel(level: Level, language: Language = 'fr'): readonly string[] {
+  return language === 'en' ? ENGLISH_GRAMMAR_TOPICS[level] : GRAMMAR_TOPICS[level]
 }
 
 export function selectedGrammarTopic(selection: string, customTopic: string): string {
   return selection === CUSTOM_GRAMMAR_TOPIC ? customTopic.trim() : selection
+}
+
+
+// Core structures by CEFR level. Labels and exercise instructions are Spanish for the learner.
+export const ENGLISH_GRAMMAR_TOPICS: Record<Level, readonly string[]> = {
+  A1: ['To be: afirmación y negación','Have got y posesión','Present simple: rutinas','Pronombres personales y posesivos','Artículos a / an / the','There is / there are','Plurales y demostrativos','Preguntas con do y does','Preposiciones de lugar','Can / cannot y habilidades','Present continuous','Horas y fechas','Adverbios de frecuencia','Some / any','Imperativo y peticiones'],
+  A2: ['Past simple: verbos regulares e irregulares','Past continuous','Past simple frente a past continuous','Present perfect: experiencias','Comparativos y superlativos','Will frente a going to','Much / many / a lot of','Should / must / have to','First conditional','Infinitivo y gerundio básicos','Pronombres objeto','Preposiciones de tiempo','Since / for','Question tags básicas','Used to: hábitos pasados'],
+  B1: ['Present perfect frente a past simple','Present perfect continuous','Past perfect','Second conditional','Voz pasiva básica','Reported speech','Relativos who / which / that','Modal verbs: deducción','Gerundio e infinitivo','Although / despite / however','Phrasal verbs habituales','So / such / too / enough','Wish: deseos','Question tags','Conectores de causa y resultado'],
+  B2: ['Third conditional','Mixed conditionals','Modales perfectos: must have / might have','Voz pasiva avanzada','Reported speech avanzado','Relativos defining y non-defining','Wish / if only','Had better / would rather','Inversiones con not only / never','Cleft sentences','Future perfect y future continuous','Participle clauses','Colocaciones y phrasal verbs','Conectores concesivos','Registro formal e informal'],
+  C1: ['Inversión negativa: rarely, hardly, no sooner','Condicionales avanzados e inversión','Modalidad, inferencia y grado de certeza','Nominalización y estilo académico','Participle clauses complejas','Cleft sentences y énfasis','Fronting y estructuras marcadas','Conectores argumentativos','Colocaciones avanzadas','Phrasal verbs idiomáticos','Hedging y cortesía','Reported speech y cambio de perspectiva','Aspecto y tiempos perfectos','Reformulación precisa','Idioms y registro'],
+  C2: ['Matices pragmáticos y connotación','Inversión y énfasis estilístico','Elipsis y estructuras avanzadas','Colocaciones poco frecuentes pero naturales','Idioms en contexto','Hedging y diplomacia','Ironía y dobles sentidos','Registro académico y coloquial','Argumentación sofisticada','Modalidad y grado de compromiso','Tiempos verbales con matices narrativos','Paráfrasis idiomática y precisión','Subordinación y cohesión','Intertextualidad y estilo','Reformulación elegante sin artificios']
 }
