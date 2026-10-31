@@ -1,7 +1,7 @@
 {
-  "name": "Parole — Aprende francés",
+  "name": "Parole — Aprende francés e inglés",
   "short_name": "Parole",
-  "description": "Practica traducción español-francés con corrección inteligente y repaso espaciado.",
+  "description": "Practica traducción del español al francés e inglés, con corrección inteligente y repaso espaciado.",
   "lang": "es",
   "id": "/traductor/",
   "start_url": "/traductor/",
