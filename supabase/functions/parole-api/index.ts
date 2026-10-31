@@ -16,7 +16,7 @@ type Evaluation = {
   natural_alternative: string; grammar_explanation_es: string
 }
 import { createMiniExams } from './mini-exams.ts'
-import { EVALUATOR_PROMPT, ENGLISH_EVALUATOR_PROMPT, preserveMeaningInAlternative } from './evaluation-quality.ts'
+import { EVALUATOR_PROMPT, ENGLISH_EVALUATOR_PROMPT, preserveMeaningInAlternative, reconcileEvaluation } from './evaluation-quality.ts'
 
 const SESSION_AGE_MS = 30 * 24 * 60 * 60 * 1000
 const encoder = new TextEncoder()
@@ -369,7 +369,7 @@ async function evaluate(body: Record<string, unknown>): Promise<Record<string, u
   }
   const current = matches[0] as Sentence
   // The database is authoritative; ignore client-side reference texts.
-  const evaluation = await openAI(current.language === 'en' ? ENGLISH_EVALUATOR_PROMPT : EVALUATOR_PROMPT, {
+  const rawEvaluation = await openAI(current.language === 'en' ? ENGLISH_EVALUATOR_PROMPT : EVALUATOR_PROMPT, {
     spanishText: current.spanish_text,
     referenceFrench: current.reference_french,
     level: current.level,
@@ -378,7 +378,9 @@ async function evaluate(body: Record<string, unknown>): Promise<Record<string, u
       ? canonicalizeLigatures(body.userAnswer.trim() as string, current.reference_french)
       : (body.userAnswer as string).trim()
   }, 0.2)
-  if (!validEvaluation(evaluation)) throw new Error('La IA ha devuelto una evaluación incompleta')
+  if (!validEvaluation(rawEvaluation)) throw new Error('La IA ha devuelto una evaluación incompleta')
+  // Never persist an incompatible grade and status (e.g. «Casi perfecto» with 20/100).
+  const evaluation = reconcileEvaluation(rawEvaluation)
   evaluation.natural_alternative = preserveMeaningInAlternative(
     current.spanish_text, evaluation.corrected_sentence, evaluation.natural_alternative
   )
