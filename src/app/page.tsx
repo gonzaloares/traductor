@@ -1144,7 +1144,7 @@ export default function Page() {
           {spellWords.length === 0 && <p className="py-3 text-sm text-slate-500">Todavía no hay palabras guardadas.</p>}
         </div>
       </details>
-    </section> : view === 'practice' || view === 'review' ? <div className={cn('mt-3 grid items-start gap-4 sm:mt-7', view === 'practice' ? 'mx-auto w-full max-w-5xl' : 'lg:grid-cols-[minmax(0,1fr)_290px] lg:gap-6')}>
+    </section> : view === 'practice' || view === 'review' ? <div className="mx-auto mt-3 grid w-full max-w-5xl items-start gap-4 sm:mt-7">
       {view === 'review' && <div className="col-span-full flex flex-wrap items-center gap-2 rounded-2xl border border-indigo-100 bg-white p-3">
         <button type="button" onClick={() => { practiceIdRef.current = null; setReviewWeak(false); setReviewSeen([]); setActiveId(null); setFeedback(null); setAnswer(''); setShowHint(false) }}
           aria-pressed={!reviewWeak} className={cn('rounded-xl px-3 py-2 text-xs font-bold sm:text-sm', !reviewWeak ? 'bg-indigo-600 text-white' : 'bg-indigo-50 text-indigo-700')}>
@@ -1265,27 +1265,7 @@ export default function Page() {
         </div>}
       </section>
 
-      {view === 'review' && <aside className="hidden space-y-5 lg:block">
-        <div className="rounded-[24px] border border-indigo-100 bg-indigo-50/70 p-6">
-          <div className="mb-4 inline-flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-100 text-indigo-600"><GraduationCap size={23} /></div>
-          <h2 className="text-lg font-extrabold text-slate-900">Así se aprende</h2>
-          <p className="mt-2 text-sm leading-relaxed text-slate-600">Recupera la frase de memoria, escribe tu respuesta y compara tu versión con la corrección.</p>
-          <div className="mt-5 space-y-4">
-            <div className="flex gap-3"><div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white text-xs font-bold text-indigo-600">1</div><p className="text-sm text-slate-700">Traduce sin consultar la solución.</p></div>
-            <div className="flex gap-3"><div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white text-xs font-bold text-indigo-600">2</div><p className="text-sm text-slate-700">Fíjate en los errores y escucha el francés.</p></div>
-            <div className="flex gap-3"><div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white text-xs font-bold text-indigo-600">3</div><p className="text-sm text-slate-700">Repasa cuando el sistema te la vuelva a proponer.</p></div>
-          </div>
-        </div>
-        <div className="rounded-[24px] border border-slate-100 bg-white p-6">
-          <div className="mb-3 flex items-center gap-2 font-extrabold text-slate-900"><RotateCcw size={18} className="text-indigo-500" /> Repetición espaciada</div>
-          <p className="text-sm leading-relaxed text-slate-500">Acierto perfecto: 1, 3, 7, 14 o 30 días. Error leve: 12 horas. Error importante: 10 minutos.</p>
-          <div className="mt-4 h-2 w-full overflow-hidden rounded-full bg-slate-100">
-            <div className="h-full rounded-full bg-indigo-500 transition-all" style={{ width: filtered.length ? (mastered / filtered.length * 100) + '%' : '0%' }} />
-          </div>
-          <p className="mt-2 text-xs font-semibold text-slate-500">{filtered.length ? Math.round(mastered / filtered.length * 100) : 0}% de frases dominadas</p>
-        </div>
-      </aside>}
-      {view === 'review' && <details className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 lg:hidden">
+      {view === 'review' && <details className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
         <summary className="cursor-pointer font-semibold text-indigo-700">Cómo funciona Parole y la repetición espaciada</summary>
         <div className="mt-3 space-y-2 leading-relaxed text-slate-700">
           <p>Traduce sin consultar la solución, revisa los errores y escucha la frase corregida.</p>
