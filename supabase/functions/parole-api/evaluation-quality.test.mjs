@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { EVALUATOR_PROMPT, preserveMeaningInAlternative } from './evaluation-quality.ts'
+import { EVALUATOR_PROMPT, ENGLISH_EVALUATOR_PROMPT, preserveMeaningInAlternative, reconcileEvaluation } from './evaluation-quality.ts'
 
 test('the grader must produce grammatical, faithful corrections and avoid false stylistic claims', () => {
   assert.match(EVALUATOR_PROMPT, /"corrected_sentence"/)
@@ -42,4 +42,22 @@ test('a non-sole-added intensifier is not blindly stripped', () => {
   const corrected = 'Il faut travailler.'
   const alt = 'Pour réussir, il faut beaucoup travailler.'
   assert.equal(preserveMeaningInAlternative('Hay que trabajar.', corrected, alt), alt)
+})
+
+
+test('a 20/100 grade never appears as almost perfect or leaves SRS unchanged', () => {
+  assert.deepEqual(reconcileEvaluation({ status: 'minor_errors', score: 20 }), { status: 'incorrect', score: 20 })
+  assert.deepEqual(reconcileEvaluation({ status: 'minor_errors', score: 92 }), { status: 'minor_errors', score: 92 })
+})
+
+test('perfect and incorrect statuses have matching numeric ranges', () => {
+  assert.deepEqual(reconcileEvaluation({ status: 'perfect', score: 70 }), { status: 'perfect', score: 100 })
+  assert.deepEqual(reconcileEvaluation({ status: 'incorrect', score: 95 }), { status: 'incorrect', score: 84 })
+  assert.deepEqual(reconcileEvaluation({ status: 'minor_errors', score: 100 }), { status: 'minor_errors', score: 99 })
+})
+
+test('the English grader calibrates isolated third-conditional mistakes', () => {
+  assert.match(ENGLISH_EVALUATOR_PROMPT, /If you had told me, I had gone with you/)
+  assert.match(ENGLISH_EVALUATOR_PROMPT, /75\/100/)
+  assert.match(EVALUATOR_PROMPT, /85-99/)
 })
