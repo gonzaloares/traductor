@@ -2,11 +2,11 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { ArrowLeft, ArrowRight, BookOpen, CheckCircle2, Clock3, GraduationCap, Headphones,
-  Loader2, Mic, Pause, Play, RotateCcw, Send, Square, Volume2 } from 'lucide-react'
+  Loader2, Mic, Pause, Play, RotateCcw, Send, Square, Volume2, XCircle } from 'lucide-react'
 import { LEVELS, type Level, type Language } from '@/lib/types'
 import { cn } from '@/lib/utils'
-import { emptyExamAnswers, examMinutes, examParts, type ExamAnswers, type ExamHistoryResponse,
-  type ExamPaper, type ExamResult } from '@/lib/exam-types'
+import { assessExam, emptyExamAnswers, examDuration, examMinutes, examParts, type ExamMode,
+  type ExamAnswers, type ExamHistoryResponse, type ExamPaper, type ExamResult } from '@/lib/exam-types'
 
 type API = <T>(url: string, init?: RequestInit) => Promise<T>
 const skillLabels = { listening: 'Comprensión oral', reading: 'Comprensión escrita',
@@ -28,6 +28,33 @@ function ScoreBreakdown({ result }: { result: ExamResult }) {
   </div>
 }
 
+function ExamOutcome({ result, compact = false }: { result: ExamResult; compact?: boolean }) {
+  const assessment = assessExam(result)
+  if (compact) return <span className={cn('rounded-md px-2 py-1 text-[11px] font-extrabold',
+    assessment.passed ? 'bg-emerald-50 text-emerald-800' : 'bg-rose-50 text-rose-800')}>
+    {assessment.status}{!assessment.officialInspired ? ' · Parole' : ''}
+  </span>
+  return <div className={cn('rounded-2xl border p-4',
+    assessment.passed ? 'border-emerald-200 bg-emerald-50' : 'border-rose-200 bg-rose-50')}>
+    <div className={cn('flex items-center gap-2 text-base font-extrabold',
+      assessment.passed ? 'text-emerald-800' : 'text-rose-800')}>
+      {assessment.passed ? <CheckCircle2 size={21}/> : <XCircle size={21}/>}
+      {assessment.status} {result.language === 'en' && <span className="text-xs font-semibold">(criterio Parole)</span>}
+    </div>
+    <p className="mt-1.5 text-xs leading-relaxed text-slate-700">{assessment.criterion}</p>
+    {assessment.failures.length > 0 && <ul className="mt-2 list-inside list-disc space-y-1 text-xs font-semibold text-rose-800">
+      {assessment.failures.map(issue => <li key={issue}>{issue}</li>)}
+    </ul>}
+    {result.language === 'fr' && result.level === 'C2' && <p className="mt-2 text-xs text-slate-700">
+      Bloque oral: {result.scores.listening + result.scores.speaking}/50 ·
+      Bloque escrito: {result.scores.reading + result.scores.writing}/50
+    </p>}
+    <p className="mt-2 text-[11px] leading-relaxed text-slate-600">
+      Resultado orientativo de Parole, no certificación oficial. La parte oral se valora desde la transcripción, sin evaluar pronunciación ni fluidez acústica.
+    </p>
+  </div>
+}
+
 export function ExamHistory({ api, language }: { api: API; language: Language }) {
   const [history, setHistory] = useState<ExamResult[]>([])
   const [error, setError] = useState('')
@@ -43,11 +70,11 @@ export function ExamHistory({ api, language }: { api: API; language: Language })
   }, [api, language])
   return <section className="soft-shadow rounded-[24px] border border-slate-100 bg-white p-5 sm:p-8">
     <div className="flex items-center gap-2"><GraduationCap size={23} className="text-indigo-600" />
-      <h2 className="text-xl font-extrabold text-slate-900">Mis mini-exámenes</h2></div>
+      <h2 className="text-xl font-extrabold text-slate-900">Mis exámenes</h2></div>
     <p className="mt-2 text-sm text-slate-600">Evolución orientativa por nivel, independiente de la repetición espaciada.</p>
     {loading ? <p className="mt-4 flex items-center gap-2 text-sm text-slate-500"><Loader2 size={16} className="animate-spin"/> Cargando exámenes...</p>
       : error ? <p className="mt-4 text-sm text-rose-700">{error}</p>
-      : history.length === 0 ? <p className="mt-4 text-sm text-slate-500">Todavía no has terminado ningún mini-examen.</p>
+      : history.length === 0 ? <p className="mt-4 text-sm text-slate-500">Todavía no has terminado ningún examen.</p>
       : <div className="mt-4 space-y-2">
         {history.slice(0, 12).map(exam => <div key={exam.id} className="rounded-xl border border-slate-200 p-3">
           <button type="button" onClick={() => setExpanded(value => value === exam.id ? null : exam.id)}
@@ -55,11 +82,12 @@ export function ExamHistory({ api, language }: { api: API; language: Language })
             className="flex w-full items-center justify-between gap-3 text-left">
             <span className="flex items-center gap-3">
               <span className="rounded-lg bg-indigo-50 px-2.5 py-2 text-sm font-extrabold text-indigo-700">{exam.level}</span>
-              <span className="text-xs text-slate-600">{new Date(exam.completed_at).toLocaleDateString('es-ES')}</span>
+              <span className="text-xs text-slate-600">{new Date(exam.completed_at).toLocaleDateString('es-ES')} · {exam.mode === 'extended' ? 'Ampliado' : 'Breve'}</span>
             </span>
-            <span className="font-extrabold tabular-nums text-slate-900">{exam.scores.total}/100</span>
+            <span className="flex shrink-0 flex-col items-end gap-1"><span className="font-extrabold tabular-nums text-slate-900">{exam.scores.total}/100</span><ExamOutcome result={exam} compact /></span>
           </button>
           {expanded === exam.id && <div className="mt-4 space-y-3 border-t border-slate-100 pt-3">
+            <ExamOutcome result={exam}/>
             <ScoreBreakdown result={exam}/>
             <p className="text-sm leading-relaxed text-slate-700">{exam.feedback.summary}</p>
             <p className="text-xs text-slate-500">{exam.note}</p>
@@ -71,6 +99,7 @@ export function ExamHistory({ api, language }: { api: API; language: Language })
 
 export function MiniExam({ api, language, onExit, onFinished }: { api: API; language: Language; onExit: () => void; onFinished: () => void }) {
   const [level, setLevel] = useState<Level>('A1')
+  const [mode, setMode] = useState<ExamMode>('quick')
   const [paper, setPaper] = useState<ExamPaper | null>(null)
   const [result, setResult] = useState<ExamResult | null>(null)
   const [answers, setAnswers] = useState<ExamAnswers>(emptyExamAnswers)
@@ -96,6 +125,8 @@ export function MiniExam({ api, language, onExit, onFinished }: { api: API; lang
         if (!activeRef.current || !data.active) return
         setPaper(data.active)
         setLevel(data.active.level)
+        setMode(data.active.mode ?? 'quick')
+        setAnswers(emptyExamAnswers(data.active.listening.questions.length))
         try {
           const stored = localStorage.getItem('parole_exam_draft_' + data.active.id)
           if (stored) {
@@ -136,8 +167,8 @@ export function MiniExam({ api, language, onExit, onFinished }: { api: API; lang
     setBusy(true); setError('')
     window.speechSynthesis?.cancel()
     try {
-      const data = await api<{ exam: ExamPaper }>('/api/mini-exam-start', request({ level, language }))
-      setPaper(data.exam); setAnswers(emptyExamAnswers()); setResult(null)
+      const data = await api<{ exam: ExamPaper }>('/api/mini-exam-start', request({ level, language, mode }))
+      setPaper(data.exam); setAnswers(emptyExamAnswers(data.exam.listening.questions.length)); setResult(null)
       setStep(0); setSeconds(0); setListenCount(0)
     } catch(e) { setError(e instanceof Error ? e.message : 'No se pudo generar el examen.') }
     finally { setBusy(false) }
@@ -180,7 +211,7 @@ export function MiniExam({ api, language, onExit, onFinished }: { api: API; lang
       recorder.start()
       setAnswers(previous => ({ ...previous, speaking: '', speaking_mode: 'skipped' }))
       setRecording(true)
-      timerRef.current = window.setTimeout(() => { if (recorder.state !== 'inactive') recorder.stop() }, 80_000)
+      timerRef.current = window.setTimeout(() => { if (recorder.state !== 'inactive') recorder.stop() }, paper?.mode === 'extended' ? 150_000 : 80_000)
     } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo activar el micrófono.') }
   }
 
@@ -245,14 +276,15 @@ export function MiniExam({ api, language, onExit, onFinished }: { api: API; lang
   if (loading) return <div className="flex justify-center p-12 text-indigo-600"><Loader2 className="animate-spin" /></div>
   if (result) return <section className="mt-5 space-y-5">
     <div className="soft-shadow rounded-3xl border border-indigo-100 bg-white p-5 sm:p-8">
-      <div className="flex items-center gap-2 text-emerald-700"><CheckCircle2 size={24}/><span className="font-bold">Mini-examen completado</span></div>
-      <p className="mt-3 text-sm font-semibold text-slate-500">Nivel {result.level} · Evaluación orientativa</p>
+      <div className="flex items-center gap-2 text-emerald-700"><CheckCircle2 size={24}/><span className="font-bold">Examen completado</span></div>
+      <p className="mt-3 text-sm font-semibold text-slate-500">Nivel {result.level} · {result.mode === 'extended' ? 'Evaluación ampliada' : 'Mini-examen'} · Orientativo</p>
       <div className="mt-2 text-4xl font-extrabold tabular-nums text-indigo-700">{result.scores.total}<span className="text-lg text-slate-500">/100</span></div>
-      <p className="mt-2 text-sm leading-relaxed text-slate-600">{result.feedback.summary}</p>
+      <div className="mt-4"><ExamOutcome result={result}/></div>
+      <p className="mt-4 text-sm leading-relaxed text-slate-600">{result.feedback.summary}</p>
       <div className="mt-6"><ScoreBreakdown result={result}/></div>
       <div className="mt-5 space-y-3 text-sm text-slate-700">
-        <p><strong>Comprensión oral:</strong> {result.correct.listening}/2 respuestas correctas</p>
-        <p><strong>Comprensión escrita:</strong> {result.correct.reading}/2 respuestas correctas</p>
+        <p><strong>Comprensión oral:</strong> {result.correct.listening}/{result.answer_key.listening.length} respuestas correctas</p>
+        <p><strong>Comprensión escrita:</strong> {result.correct.reading}/{result.answer_key.reading.length} respuestas correctas</p>
         <p><strong>Escritura:</strong> {result.feedback.writing}</p>
         <p><strong>Expresión oral:</strong> {result.feedback.speaking}</p>
       </div>
@@ -275,9 +307,9 @@ export function MiniExam({ api, language, onExit, onFinished }: { api: API; lang
   if (!paper) return <section className="mt-5 space-y-4">
     <div className="soft-shadow rounded-3xl border border-slate-100 bg-white p-5 sm:p-8">
       <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600"><GraduationCap size={25}/></div>
-      <h2 className="text-2xl font-extrabold text-slate-900">Mini-examen de {language === 'en' ? 'inglés' : 'francés'}</h2>
+      <h2 className="text-2xl font-extrabold text-slate-900">Examen de {language === 'en' ? 'inglés' : 'francés'}</h2>
       <p className="mt-2 text-sm leading-relaxed text-slate-600">
-        Cuatro competencias: comprensión oral, comprensión escrita, expresión escrita y expresión oral. Una prueba breve orientativa, inspirada en {language === 'en' ? 'Cambridge English' : 'DELF/DALF'}, sin valor de certificación.
+        Cuatro competencias: comprensión oral, comprensión escrita, expresión escrita y expresión oral. Pruebas originales orientativas, inspiradas en {language === 'en' ? 'Cambridge English' : 'DELF/DALF'}, sin valor de certificación.
       </p>
       <p className="mt-4 text-sm font-bold text-slate-800">Selecciona el nivel</p>
       <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-6" role="group" aria-label="Nivel del examen">
@@ -285,19 +317,38 @@ export function MiniExam({ api, language, onExit, onFinished }: { api: API; lang
           className={cn('rounded-xl border-2 px-3 py-3 text-sm font-extrabold',
             level === item ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-slate-100 text-slate-600')}>{item}</button>)}
       </div>
+      <p className="mt-5 text-sm font-bold text-slate-800">Modalidad</p>
+      <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2" role="group" aria-label="Modalidad de examen">
+        {([{id:'quick', title:'Mini-examen', detail:'2 preguntas por comprensión · Revisión rápida'},
+          {id:'extended', title:'Evaluación ampliada', detail:'6 preguntas por comprensión · Más fiable'}] as const).map(option =>
+          <button key={option.id} type="button" onClick={() => setMode(option.id)} aria-pressed={mode === option.id}
+            className={cn('rounded-xl border-2 p-3 text-left transition-colors',
+              mode === option.id ? 'border-indigo-500 bg-indigo-50' : 'border-slate-200 bg-white hover:border-indigo-200')}>
+            <span className="block text-sm font-extrabold text-slate-900">{option.title}</span>
+            <span className="mt-1 block text-xs leading-relaxed text-slate-600">{option.detail}</span>
+            <span className="mt-1 block text-xs font-semibold text-indigo-700">{examDuration(level, option.id)} min orientativos</span>
+          </button>)}
+      </div>
+      <p className="mt-3 text-xs leading-relaxed text-slate-600">
+        {language === 'fr'
+          ? level === 'C2'
+            ? 'Referencia DALF C2: aprobado con 50/100 y un mínimo de 10/50 en cada prueba oral y escrita conjunta.'
+            : 'Referencia DELF/DALF: aprobado con 50/100 y un mínimo de 5/25 en cada competencia.'
+          : 'Inglés: umbral interno Parole de 60/100 sin mínimos por competencia; no se convierten las notas a la escala Cambridge.'}
+      </p>
       <div className="mt-5 space-y-2">
         {examParts.map((part, i) => <div className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2 text-sm" key={part.key}>
-          <span>{i+1}. {part.title}</span><span className="text-xs text-slate-500">{part.key==='speaking' && (level==='C1'||level==='C2')?'9 min':part.time}</span>
+          <span>{i+1}. {part.title}</span><span className="text-xs text-slate-500">{mode === 'extended' ? (level === 'C1' || level === 'C2' ? ['10 min','12 min','14 min','9 min'][i] : ['8 min','8 min','12 min','7 min'][i]) : (part.key==='speaking' && (level==='C1'||level==='C2')?'9 min':part.time)}</span>
         </div>)}
       </div>
       <p className="mt-4 text-xs text-slate-500">
-        Duración estimada: {level === 'C1' || level === 'C2' ? '20' : '15'} min. Necesitarás sonido y micrófono. El audio del examen oral se transcribe, pero no se guarda.
+        Duración estimada: {examDuration(level, mode)} min. Necesitarás sonido y micrófono. El audio del examen oral se transcribe, pero no se guarda. La evaluación ampliada genera más contenido y consume más API.
       </p>
       {error && <p className="mt-4 rounded-lg bg-rose-50 p-3 text-sm text-rose-800" role="alert">{error}</p>}
       <button type="button" onClick={() => void begin()} disabled={busy}
         className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 p-4 font-bold text-white disabled:opacity-50">
         {busy ? <Loader2 size={19} className="animate-spin"/> : <ArrowRight size={19}/>}
-        {busy ? 'Preparando examen...' : 'Empezar mini-examen'}
+        {busy ? 'Preparando examen...' : mode === 'extended' ? 'Empezar evaluación ampliada' : 'Empezar mini-examen'}
       </button>
     </div>
   </section>
@@ -307,7 +358,7 @@ export function MiniExam({ api, language, onExit, onFinished }: { api: API; lang
     <div className="soft-shadow rounded-3xl border border-slate-100 bg-white p-5 sm:p-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="text-xs font-bold uppercase tracking-widest text-indigo-600">Mini-examen {paper.level}</p>
+          <p className="text-xs font-bold uppercase tracking-widest text-indigo-600">{paper.mode === 'extended' ? 'Evaluación ampliada' : 'Mini-examen'} {paper.level}</p>
           <h2 className="mt-1 text-xl font-extrabold text-slate-900">{step+1}/4 · {part.title}</h2>
         </div>
         <div className="flex items-center gap-1.5 text-sm font-semibold tabular-nums text-slate-500">
@@ -319,7 +370,7 @@ export function MiniExam({ api, language, onExit, onFinished }: { api: API; lang
           className={cn('h-2 flex-1 rounded-full', index <= step ? 'bg-indigo-500' : 'bg-slate-200')}/>)}
       </div>
       {step === 0 && <div className="mt-6 space-y-5">
-        <p className="text-sm text-slate-600">Escucha el fragmento en {language === 'en' ? 'inglés' : 'francés'} y responde a las dos preguntas. Puedes reproducirlo dos veces. No se mostrará la transcripción hasta terminar.</p>
+        <p className="text-sm text-slate-600">Escucha el fragmento en {language === 'en' ? 'inglés' : 'francés'} y responde a las {paper.listening.questions.length} preguntas. Puedes reproducirlo dos veces. No se mostrará la transcripción hasta terminar.</p>
         <button type="button" onClick={playAudio} disabled={listenCount >= 2 || !('speechSynthesis' in window)}
           className="flex w-full items-center justify-center gap-3 rounded-xl bg-indigo-50 p-4 font-bold text-indigo-700 disabled:opacity-50">
           <Headphones size={22}/> {listenCount < 2 ? 'Escuchar audio' : 'Dos reproducciones realizadas'}
@@ -360,7 +411,7 @@ export function MiniExam({ api, language, onExit, onFinished }: { api: API; lang
       {step === 3 && <div className="mt-6 space-y-4">
         <p className="text-xs font-bold uppercase tracking-widest text-indigo-600">{language === 'en' ? 'Speaking' : 'Expression orale'}</p>
         <p className="rounded-xl bg-slate-50 p-4 font-semibold leading-relaxed text-slate-900">{paper.speaking_prompt}</p>
-        <p className="text-sm leading-relaxed text-slate-600">Habla en {language === 'en' ? 'inglés' : 'francés'} durante aproximadamente 45–80 segundos. El audio se envía para transcribirlo y no se conserva en Parole.</p>
+        <p className="text-sm leading-relaxed text-slate-600">Habla en {language === 'en' ? 'inglés' : 'francés'} durante aproximadamente {paper.mode === 'extended' ? '2–2,5 minutos' : '45–80 segundos'}. El audio se envía para transcribirlo y no se conserva en Parole.</p>
         {recording ? <button type="button" onClick={stopRecording}
           className="flex w-full items-center justify-center gap-2 rounded-xl bg-rose-600 p-4 font-bold text-white">
           <Square size={18}/> Detener grabación
