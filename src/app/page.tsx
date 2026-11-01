@@ -269,7 +269,7 @@ function FeedbackPanel({ feedback, userAnswer, sentence, previousMastery, onNext
         Perfecto: +1 · Casi perfecto: sin cambios · Error importante: −1. Las frases dominadas siguen repasándose.
       </p>
     </div>
-    <div className="grid grid-cols-3 gap-2" aria-label="Acciones de la corrección">
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3" aria-label="Acciones de la corrección">
       <button type="button" onClick={onRetry} className="flex min-h-12 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-1 text-xs font-bold text-slate-700 hover:bg-slate-50 sm:text-sm">
         <RotateCcw size={17} /> Reintentar
       </button>
@@ -277,7 +277,7 @@ function FeedbackPanel({ feedback, userAnswer, sentence, previousMastery, onNext
         isFavorite ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50')}>
         <Bookmark size={17} fill={isFavorite ? 'currentColor' : 'none'} /> {isFavorite ? 'Guardada' : 'Guardar'}
       </button>
-      <button type="button" onClick={onNext} className="flex min-h-12 items-center justify-center gap-1 rounded-xl bg-indigo-600 px-1 text-xs font-bold text-white hover:bg-indigo-700 sm:text-sm">
+      <button type="button" onClick={onNext} className="hidden min-h-12 items-center justify-center gap-1 rounded-xl bg-indigo-600 px-1 text-xs font-bold text-white hover:bg-indigo-700 sm:flex sm:text-sm">
         Siguiente <ArrowRight size={17} />
       </button>
     </div>
@@ -406,7 +406,7 @@ function FeedbackPanel({ feedback, userAnswer, sentence, previousMastery, onNext
       </div>}
     </div>
     <button type="button" onClick={onNext}
-      className="flex w-full items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-6 py-4 font-bold text-white shadow-lg shadow-indigo-200 transition hover:bg-indigo-700">
+      className="hidden w-full items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-6 py-4 font-bold text-white shadow-lg shadow-indigo-200 transition hover:bg-indigo-700 sm:flex">
       Siguiente frase <ArrowRight size={20} />
     </button>
   </section>
@@ -859,7 +859,8 @@ export default function Page() {
   if (!authReady) return <main className="flex min-h-screen items-center justify-center gap-3 text-indigo-600"><Loader2 className="animate-spin" /> Comprobando acceso...</main>
   if (!authorized) return <Login onLogin={login} busy={authBusy} error={authError} />
 
-  return <main className="mx-auto min-h-screen max-w-6xl px-4 pb-32 sm:px-6 sm:pb-20 lg:px-8">
+  return <main className={cn('mx-auto min-h-screen max-w-6xl px-4 sm:px-6 sm:pb-20 lg:px-8',
+    feedback && (view === 'practice' || (view === 'review' && reviewMode === 'sentences')) ? 'pb-48' : 'pb-32')}>
     <header className="flex min-h-[70px] items-center justify-between gap-2 border-b border-slate-200/70 py-2.5 sm:h-24 sm:py-0">
       <div className="flex min-w-0 items-center gap-2 sm:gap-3">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-xl font-black text-white shadow-md shadow-indigo-200 sm:h-11 sm:w-11 sm:rounded-2xl">P<span className="text-amber-300">.</span></div>
@@ -1377,6 +1378,13 @@ export default function Page() {
 
     {view !== 'exam' && <nav aria-label="Navegación principal" className={cn('fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 shadow-[0_-6px_24px_rgba(15,23,42,.07)] backdrop-blur sm:hidden', isTyping && 'hidden')}
       style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+      {feedback && current && (view === 'practice' || (view === 'review' && reviewMode === 'sentences')) &&
+        <div className="border-b border-slate-200 px-4 py-2.5">
+          <button type="button" onClick={next}
+            className="mx-auto flex min-h-12 w-full max-w-lg items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-base font-extrabold text-white shadow-sm transition hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2">
+            Siguiente frase <ArrowRight size={19} aria-hidden="true" />
+          </button>
+        </div>}
       <div className="mx-auto flex max-w-lg items-stretch justify-around gap-0.5 px-1.5 py-2">
         {NAV_ITEMS.map(item => {
           const Icon = item.icon
