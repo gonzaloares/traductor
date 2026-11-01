@@ -1,7 +1,9 @@
 type Level = 'A1'|'A2'|'B1'|'B2'|'C1'|'C2'
 type Language = 'fr' | 'en'
+type ExamMode = 'quick' | 'extended'
 type Question = { prompt: string; options: string[]; correct_index: number }
 type Paper = {
+  mode?: ExamMode;
   listening: { script: string; questions: Question[] };
   reading: { passage: string; questions: Question[] };
   writing_prompt: string; speaking_prompt: string
@@ -14,17 +16,24 @@ type Row = {
 type Database = (path: string, init?: RequestInit) => Promise<unknown>
 type AI = (system: string, input: unknown, temperature: number, maxTokens?: number) => Promise<Record<string, unknown>>
 const uuid = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i
-const generationPrompt = `Genera una prueba ORIGINAL y breve de francés para el nivel MCER indicado, inspirada en las cuatro competencias DELF/DALF. Devuelve únicamente un objeto JSON con este formato:
-{"listening":{"script":"...","questions":[{"prompt":"...","options":["...","...","...","..."],"correct_index":0},{"prompt":"...","options":["...","...","...","..."],"correct_index":2}]},"reading":{"passage":"...","questions":[{"prompt":"...","options":["...","...","...","..."],"correct_index":1},{"prompt":"...","options":["...","...","...","..."],"correct_index":3}]},"writing_prompt":"...","speaking_prompt":"..."}.
-Los textos script y passage son distintos, naturales y enteramente en francés: 60-130 palabras A1-B2, 110-190 C1-C2. El script será una conversación, anécdota o anuncio para escuchar, no las preguntas. Dos preguntas de comprensión diferentes para cada texto, escritas en francés, con cuatro respuestas plausibles y una única correcta; variar la posición correcta. Las consignas de escritura y habla son distintas, completas y están en francés, apropiadas al nivel: A1-A2 presentación y vida diaria, B1-B2 relato, opinión e hipótesis, C1-C2 síntesis y argumentación matizada. Los ejercicios deben poder completarse en 15 minutos (A1-B2) o 20 (C1-C2). No copies exámenes oficiales, no incluyas respuestas en los enunciados y evita ambigüedades.`
-const englishGenerationPrompt = generationPrompt
-  .replace('de francés', 'de inglés')
-  .replace('DELF/DALF', 'Cambridge English')
-  .replaceAll('en francés', 'en inglés')
-  .replaceAll('francés', 'inglés')
-  + ' Usa inglés británico contemporáneo como referencia; acepta variantes americanas válidas. No reproduzcas exámenes oficiales.'
+function generationPrompt(language: Language, mode: ExamMode): string {
+  const target = language === 'en' ? 'inglés' : 'francés'
+  const framework = language === 'en' ? 'Cambridge English' : 'DELF/DALF'
+  const count = mode === 'extended' ? 6 : 2
+  const examples = Array.from({ length: count }, (_, i) =>
+    '{"prompt":"Pregunta ' + (i + 1) + '","options":["Opción A","Opción B","Opción C","Opción D"],"correct_index":' + (i % 4) + '}').join(',')
+  const words = mode === 'extended'
+    ? '200–330 palabras en A1–B2, 300–450 en C1–C2'
+    : '60–130 palabras en A1–B2, 110–190 en C1–C2'
+  const guidance = mode === 'extended'
+    ? 'Evaluación AMPLIADA: las seis preguntas de cada texto deben cubrir ideas principales, detalles e inferencias, sin redundancia. Solicita un texto escrito de 130–180 palabras para A1–B2, o 220–300 para C1–C2, adaptando la exigencia al nivel. La tarea oral debe permitir una exposición de 2–2,5 minutos. Tiempo total orientativo 35 minutos A1–B2 o 45 minutos C1–C2.'
+    : 'Evaluación BREVE: dos preguntas por cada texto y consignas realizables en 15 minutos A1–B2 o 20 minutos C1–C2.'
+  return `Genera una prueba ORIGINAL de ${target} para el nivel MCER indicado, inspirada en las cuatro competencias de ${framework}. Devuelve SOLO un objeto JSON con esta estructura y exactamente ${count} preguntas en cada bloque:
+{"listening":{"script":"texto para escuchar","questions":[${examples}]},"reading":{"passage":"texto para leer","questions":[${examples}]},"writing_prompt":"consigna completa","speaking_prompt":"consigna completa"}.
+Los textos script y passage serán distintos, naturales y enteramente en ${target}, con ${words} cada uno. El script será una conversación, anécdota o anuncio, no las preguntas. Cada pregunta tendrá cuatro respuestas plausibles, distintas y una única correcta (índice 0–3); distribuye sus posiciones y escribe preguntas y opciones en ${target}. Las consignas de expresión escrita y oral deben ser diferentes, completas y en ${target}: A1–A2 vida diaria, B1–B2 relato, opinión e hipótesis, C1–C2 síntesis y argumentación matizada. ${guidance} No copies exámenes oficiales, no des pistas en los enunciados, no incluyas respuestas correctas fuera de correct_index y evita ambigüedades. ${language === 'en' ? 'Usa inglés británico como referencia y admite variantes americanas válidas.' : ''}`
+}
 
-function validPaper(v: unknown): v is Paper {
+function validPaper(v: unknown, count: number): v is Paper {
   if (!v || typeof v !== 'object' || Array.isArray(v)) return false
   const p = v as Record<string, unknown>
   if (typeof p.writing_prompt !== 'string' || p.writing_prompt.length < 12 || p.writing_prompt.length > 700 ||
@@ -33,7 +42,7 @@ function validPaper(v: unknown): v is Paper {
     const item = p[area] as Record<string, unknown> | undefined
     const paragraph = item?.[area === 'listening' ? 'script' : 'passage']
     if (!item || typeof paragraph !== 'string' || paragraph.length < 100 ||
-        paragraph.length > 3000 || !Array.isArray(item.questions) || item.questions.length !== 2) return false
+        paragraph.length > 5000 || !Array.isArray(item.questions) || item.questions.length !== count) return false
     for (const q of item.questions) {
       if (!q || typeof q.prompt !== 'string' || q.prompt.length < 5 || q.prompt.length > 500 ||
           !Array.isArray(q.options) || q.options.length !== 4 ||
@@ -47,7 +56,7 @@ function validPaper(v: unknown): v is Paper {
 function publicPaper(row: Row) {
   const questions = (items: Question[]) => items.map(q => ({ prompt: q.prompt, options: q.options }))
   return {
-    id: row.id, level: row.level, language: row.language, started_at: row.started_at, duration_minutes: row.duration_minutes,
+    id: row.id, level: row.level, language: row.language, mode: row.paper.mode === 'extended' ? 'extended' : 'quick', started_at: row.started_at, duration_minutes: row.duration_minutes,
     listening: { script: row.paper.listening.script, questions: questions(row.paper.listening.questions) },
     reading: { passage: row.paper.reading.passage, questions: questions(row.paper.reading.questions) },
     writing_prompt: row.paper.writing_prompt, speaking_prompt: row.paper.speaking_prompt
@@ -60,11 +69,15 @@ export function createMiniExams(db: Database, openAI: AI, apiKey: () => string) 
     }
     const level = body.level as Level
     const language: Language = body.language === 'en' ? 'en' : 'fr'
-    const paper = await openAI(language === 'en' ? englishGenerationPrompt : generationPrompt, { level }, 0.7, 3500)
-    if (!validPaper(paper)) throw new Error('El examen generado no tiene un formato válido')
+    if (body.mode !== undefined && body.mode !== 'quick' && body.mode !== 'extended')
+      return { error: 'Modalidad de examen no válida.', statusCode: 400 }
+    const mode: ExamMode = body.mode === 'extended' ? 'extended' : 'quick'
+    const generated = await openAI(generationPrompt(language, mode), { level, mode }, 0.7, mode === 'extended' ? 7000 : 3500)
+    if (!validPaper(generated, mode === 'extended' ? 6 : 2)) throw new Error('El examen generado no tiene un formato válido')
+    const paper: Paper = { ...(generated as Paper), mode }
     const inserted = await db('mini_exams?select=*', {
       method: 'POST', headers: { Prefer: 'return=representation' },
-      body: JSON.stringify({ level, language, duration_minutes: level === 'C1' || level === 'C2' ? 20 : 15, paper })
+      body: JSON.stringify({ level, language, duration_minutes: mode === 'extended' ? (level === 'C1' || level === 'C2' ? 45 : 35) : (level === 'C1' || level === 'C2' ? 20 : 15), paper })
     })
     if (!Array.isArray(inserted) || inserted.length !== 1) throw new Error('No se ha podido guardar el examen')
     return { exam: publicPaper(inserted[0] as Row) }
@@ -86,9 +99,10 @@ export function createMiniExams(db: Database, openAI: AI, apiKey: () => string) 
     const exam = rows[0] as Row
     if (exam.state === 'completed' && exam.result) return { result: exam.result }
     const a = body.answers as Record<string, unknown> | null
-    const optionAnswers = (v: unknown): v is number[] =>
-      Array.isArray(v) && v.length === 2 && v.every(n => Number.isInteger(n) && n >= -1 && n <= 3)
-    if (!a || !optionAnswers(a.listening) || !optionAnswers(a.reading) ||
+    const optionAnswers = (v: unknown, count: number): v is number[] =>
+      Array.isArray(v) && v.length === count && v.every(n => Number.isInteger(n) && n >= -1 && n <= 3)
+    if (!a || !optionAnswers(a.listening, exam.paper.listening.questions.length) ||
+        !optionAnswers(a.reading, exam.paper.reading.questions.length) ||
         typeof a.writing !== 'string' || a.writing.length > 5000 ||
         typeof a.speaking !== 'string' || a.speaking.length > 2500 ||
         !['audio', 'skipped'].includes(String(a.speaking_mode)))
@@ -96,7 +110,8 @@ export function createMiniExams(db: Database, openAI: AI, apiKey: () => string) 
     const correct = (part: 'listening'|'reading') =>
       exam.paper[part].questions.reduce((n, q, i) => n + Number(q.correct_index === (a[part] as number[])[i]), 0)
     const listeningCorrect = correct('listening'), readingCorrect = correct('reading')
-    const listening = Math.round(listeningCorrect * 12.5), reading = Math.round(readingCorrect * 12.5)
+    const listening = Math.round(listeningCorrect * 25 / exam.paper.listening.questions.length)
+    const reading = Math.round(readingCorrect * 25 / exam.paper.reading.questions.length)
     const writingText = a.writing.trim()
     const speakingText = a.speaking_mode === 'audio' ? a.speaking.trim() : ''
     let writing = 0, speaking = 0
@@ -122,7 +137,7 @@ export function createMiniExams(db: Database, openAI: AI, apiKey: () => string) 
     }
     const completed_at = new Date().toISOString()
     const result = {
-      id: exam.id, level: exam.level, language: exam.language, started_at: exam.started_at, completed_at,
+      id: exam.id, level: exam.level, language: exam.language, mode: exam.paper.mode === 'extended' ? 'extended' : 'quick', started_at: exam.started_at, completed_at,
       duration_minutes: exam.duration_minutes,
       elapsed_seconds: Math.max(0, Math.round((Date.now() - new Date(exam.started_at).getTime()) / 1000)),
       scores: { listening, reading, writing, speaking, total: listening + reading + writing + speaking },
@@ -133,7 +148,7 @@ export function createMiniExams(db: Database, openAI: AI, apiKey: () => string) 
         listening: exam.paper.listening.questions.map(q => q.correct_index),
         reading: exam.paper.reading.questions.map(q => q.correct_index)
       },
-      note: 'Evaluación orientativa: no equivale a una certificación oficial. La nota oral no contempla pronunciación ni fluidez acústica.'
+      note: 'Evaluación orientativa: no equivale a una certificación oficial ni usa la escala oficial Cambridge. La nota oral se calcula desde una transcripción y no incluye pronunciación ni fluidez acústica.'
     }
     const changed = await db('mini_exams?select=id&id=eq.' + exam.id + '&state=eq.active', {
       method: 'PATCH', headers: { Prefer: 'return=representation' },
