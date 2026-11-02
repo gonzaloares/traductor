@@ -16,7 +16,7 @@ type Evaluation = {
   natural_alternative: string; grammar_explanation_es: string
 }
 import { createMiniExams } from './mini-exams.ts'
-import { EVALUATOR_PROMPT, ENGLISH_EVALUATOR_PROMPT, preserveMeaningInAlternative, protectDativeDislocation, reconcileEvaluation } from './evaluation-quality.ts'
+import { EVALUATOR_PROMPT, ENGLISH_EVALUATOR_PROMPT, preserveMeaningInAlternative, protectDativeDislocation, correctUnchangedMinorEvaluation, reconcileEvaluation } from './evaluation-quality.ts'
 
 const SESSION_AGE_MS = 30 * 24 * 60 * 60 * 1000
 const encoder = new TextEncoder()
@@ -380,7 +380,10 @@ async function evaluate(body: Record<string, unknown>): Promise<Record<string, u
   }, 0.2)
   if (!validEvaluation(rawEvaluation)) throw new Error('La IA ha devuelto una evaluación incompleta')
   // Never persist an incompatible grade and status (e.g. «Casi perfecto» with 20/100).
-  const evaluation = protectDativeDislocation(current.spanish_text, body.userAnswer as string, reconcileEvaluation(rawEvaluation))
+  const evaluation = protectDativeDislocation(
+    current.spanish_text, body.userAnswer as string,
+    correctUnchangedMinorEvaluation(body.userAnswer as string, reconcileEvaluation(rawEvaluation))
+  )
   evaluation.natural_alternative = preserveMeaningInAlternative(
     current.spanish_text, evaluation.corrected_sentence, evaluation.natural_alternative
   )

@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { EVALUATOR_PROMPT, ENGLISH_EVALUATOR_PROMPT, preserveMeaningInAlternative, reconcileEvaluation } from './evaluation-quality.ts'
+import { EVALUATOR_PROMPT, ENGLISH_EVALUATOR_PROMPT, preserveMeaningInAlternative, protectDativeDislocation, correctUnchangedMinorEvaluation, reconcileEvaluation } from './evaluation-quality.ts'
 
 test('the grader must produce grammatical, faithful corrections and avoid false stylistic claims', () => {
   assert.match(EVALUATOR_PROMPT, /"corrected_sentence"/)
@@ -60,4 +60,52 @@ test('the English grader calibrates isolated third-conditional mistakes', () => 
   assert.match(ENGLISH_EVALUATOR_PROMPT, /If you had told me, I had gone with you/)
   assert.match(ENGLISH_EVALUATOR_PROMPT, /75\/100/)
   assert.match(EVALUATOR_PROMPT, /85-99/)
+})
+
+test('unchanged French answer: 90/100 becomes perfect 100/100', () => {
+  const evaluation = {
+    status: 'minor_errors', score: 90,
+    corrected_sentence: 'Ce t-shirt est rouge.',
+    grammar_explanation_es: 'Casi perfecta.',
+    orthography_errors: [{ written: 'rouge', correct: 'rouge', meaning_es: 'rojo' }]
+  }
+  const result = correctUnchangedMinorEvaluation('Ce t-shirt est rouge.', evaluation)
+  assert.equal(result.status, 'perfect')
+  assert.equal(result.score, 100)
+  assert.deepEqual(result.orthography_errors, [])
+  assert.match(result.grammar_explanation_es, /No hay errores/)
+})
+
+test('real punctuation, spelling and capitalization differences still count', () => {
+  const evaluation = {
+    status: 'minor_errors', score: 90,
+    corrected_sentence: 'Ce t-shirt est rouge.',
+    grammar_explanation_es: 'Falta puntuación.'
+  }
+  assert.deepEqual(correctUnchangedMinorEvaluation('Ce t-shirt est rouge', evaluation), evaluation)
+  assert.deepEqual(correctUnchangedMinorEvaluation('Ce T-shirt est rouge.', evaluation), evaluation)
+  assert.deepEqual(correctUnchangedMinorEvaluation('Ce t-shirt est rougé.', evaluation), evaluation)
+  assert.equal(correctUnchangedMinorEvaluation('  Ce t-shirt  est rouge.  ', evaluation).score, 100)
+})
+
+test('same safeguard applies to English', () => {
+  const result = correctUnchangedMinorEvaluation('This shirt is red.', {
+    status: 'minor_errors', score: 88,
+    corrected_sentence: 'This shirt is red.', grammar_explanation_es: 'Minor issue'
+  })
+  assert.equal(result.status, 'perfect')
+  assert.equal(result.score, 100)
+})
+
+test('the specific dative-dislocation rule retains its punctuation requirement', () => {
+  const answer = 'Je lui ai donné les clés à ma sœur.'
+  const modelOutput = correctUnchangedMinorEvaluation(answer, {
+    status: 'minor_errors', score: 90,
+    corrected_sentence: answer, natural_alternative: answer,
+    grammar_explanation_es: 'Minor issue'
+  })
+  const result = protectDativeDislocation('Le he dado las llaves a mi hermana.', answer, modelOutput)
+  assert.equal(result.status, 'minor_errors')
+  assert.equal(result.score, 95)
+  assert.match(result.corrected_sentence, /clés, à ma sœur/)
 })
