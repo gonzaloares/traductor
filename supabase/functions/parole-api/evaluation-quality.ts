@@ -58,7 +58,7 @@ export function protectDativeDislocation<T extends {
   if (clean(spanishText) !== 'le he dado las llaves a mi hermana') return evaluation
   const actual = clean(userAnswer)
   if (!/^je lui ai donné les clés,? à ma soeur$/u.test(actual)) return evaluation
-  const hasComma = /clés\\s*,\\s*à ma s[œo]eur/iu.test(userAnswer)
+  const hasComma = clean(userAnswer).includes('clés, à ma soeur')
   return {
     ...evaluation,
     status: hasComma ? 'perfect' : 'minor_errors',
