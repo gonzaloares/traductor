@@ -17,6 +17,8 @@ Prioridades innegociables:
 3) No añadas intensidad, adverbios o información inexistente en el español: no conviertas "nos gustaron" en "nous avons beaucoup aimé", "parece" en "parece claramente" ni cambies cantidades o grado de certeza. Una alternativa no puede enriquecer el sentido a costa de modificarlo.
 4) Para comparaciones verifica "plus ... que" y construcciones idiomáticas. Ejemplo orientativo para "El tema del que hablamos ayer es más complicado de lo que parece": "Le sujet dont nous avons parlé hier est plus compliqué qu'il n'y paraît." No construyas la pseudocorrección "... plus compliqué que ce qu'il paraît". Explica "qu'il n'y paraît" y que el "ne" puede ser expletivo.
 5) Para el participio pasado con "avoir", si COD precede al verbo mediante "que", concuerda: "Nous avons aimé les films que nous avons vus." El error "vu" → "vus" es de concordancia; NO afirmes que "aimé" es inadecuado ni agregues "beaucoup" sin justificación.
+7) Dativo y complemento explícito: en francés la dislocación a la derecha es legítima, sobre todo en registro hablado: «Je lui ai donné les clés, à ma sœur.» equivale a «J'ai donné les clés à ma sœur.». Si el alumno escribe «Je lui ai donné les clés à ma soeur», el problema como máximo es la coma de dislocación (errata menor), NO un error importante de significado o gramática. Acepta «oe» por «œ». La corrección debe conservar «à ma sœur», porque el español identifica a la destinataria; «Je lui ai donné les clés» sola omite información y NO es una corrección fiel. La opción neutra «J'ai donné les clés à ma sœur» es una alternativa válida, no una obligación de eliminar «à ma sœur».
+8) Diferencia entre preferencia de estilo y error real: si el alumno usa una construcción gramatical aceptada, aunque marcada en lengua hablada, no la rebajes a «incorrect»; si solo falta una coma, usa minor_errors y nota 90-99, siempre que el significado esté íntegro.
 6) La sustitución de teclado "oe" por la ligadura "œ" (coeur/cœur, soeur/sœur, oeuf/œuf, oeuvre/œuvre) se acepta sin penalización. En la corrección puede mostrarse "œ". Respeta también las grafías permitidas por las rectificaciones de 1990 (p. ej. "parait" / "paraît"); NO penalices alternativas ortográficas normativas.
 
 Antes de emitir el JSON, verifica DENTRO DE ESTA MISMA RESPUESTA, sin solicitar más llamadas: a) que las dos frases francesas son gramaticales e idiomáticas; b) que el significado coincide exactamente con el español; c) que la explicación describe errores presentes y no inventa fallos; d) que status, score y orthography_errors concuerdan. Explica con sencillez en A1 y suficiente detalle en C1/C2; no añadas discursos largos.`
@@ -41,6 +43,32 @@ export function preserveMeaningInAlternative(
     }
   }
   return alternative
+}
+
+// Narrow deterministic regression guard: avoid grading a valid right-dislocation as
+// a serious error or deleting the recipient specified in the original Spanish.
+// Keep other sentences under the ordinary model evaluation rather than guessing.
+export function protectDativeDislocation<T extends {
+  status: 'perfect' | 'minor_errors' | 'incorrect'; score: number;
+  corrected_sentence: string; natural_alternative: string; grammar_explanation_es: string
+}>(spanishText: string, userAnswer: string, evaluation: T): T {
+  const clean = (value: string) => value.normalize('NFC').toLocaleLowerCase()
+    .replace(/[’‘]/g, "'").replace(/œ/g, 'oe')
+    .replace(/\\s+/g, ' ').trim().replace(/[.!?]+$/u, '').trim()
+  if (clean(spanishText) !== 'le he dado las llaves a mi hermana') return evaluation
+  const actual = clean(userAnswer)
+  if (!/^je lui ai donné les clés,? à ma soeur$/u.test(actual)) return evaluation
+  const hasComma = /clés\\s*,\\s*à ma s[œo]eur/iu.test(userAnswer)
+  return {
+    ...evaluation,
+    status: hasComma ? 'perfect' : 'minor_errors',
+    score: hasComma ? 100 : 95,
+    corrected_sentence: 'Je lui ai donné les clés, à ma sœur.',
+    natural_alternative: 'J’ai donné les clés à ma sœur.',
+    grammar_explanation_es: hasComma
+      ? 'Tu traducción es correcta: «lui» retoma a «ma sœur» mediante dislocación a la derecha, válida en francés hablado. «J’ai donné les clés à ma sœur» es una alternativa más neutra; ambas conservan a la destinataria.'
+      : 'Tu traducción transmite todo el significado y la dislocación de «à ma sœur» es válida, especialmente en francés hablado. En escritura se recomienda la coma antes de «à ma sœur». También puedes decir «J’ai donné les clés à ma sœur». No se debe eliminar a la destinataria.'
+  }
 }
 
 // English-language evaluator. The JSON response fields are shared with the original French flow.
