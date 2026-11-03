@@ -74,3 +74,25 @@ test('uppercase ligature fallback is accepted without changing case rules', () =
   assert.equal(result.hasChanges, false)
   assert.deepEqual(result.changes, [])
 })
+
+test('the example n"est / n’est and oe/œ has no visual errors', () => {
+  const before = 'Elle n"est pas ma soeur.'
+  const after = "Elle n'est pas ma sœur."
+  const result = compareTranslations(before, after)
+  assert.equal(result.hasChanges, false)
+  assert.deepEqual(result.changes, [])
+  assert.equal(result.original.map(p => p.text).join(''), before)
+  assert.equal(result.corrected.map(p => p.text).join(''), after)
+})
+
+test('genuine quotes and grammatical differences remain highlighted', () => {
+  assert.equal(compareTranslations('Il a dit "bonjour".', "Il a dit 'bonjour'.").hasChanges, true)
+  const result = compareTranslations('Elle n"est pas mon soeur.', "Elle n'est pas ma sœur.")
+  assert.equal(result.hasChanges, true)
+  assert.ok(result.changes.some(c => c.before.includes('mon') || c.after.includes('ma')))
+})
+
+test('curly apostrophes in elisions are equivalent', () => {
+  assert.equal(compareTranslations("Qu’il arrive.", "Qu'il arrive.").hasChanges, false)
+  assert.equal(compareTranslations("J’ai fini.", "J'ai fini.").hasChanges, false)
+})

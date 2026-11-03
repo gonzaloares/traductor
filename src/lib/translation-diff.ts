@@ -21,8 +21,12 @@ export interface TranslationDiff {
 
 const TOKENS = /\s+|[\p{L}\p{M}\p{N}]+|[^\s\p{L}\p{M}\p{N}]+/gu
 
-/** The keyboard fallback oe for œ is not a correction-worthy difference. */
-function comparableToken(value: string): string {
+/** Accept œ/oe and apostrophe keyboard variants within genuine French elisions. */
+const ELISION_PREFIX = /^(?:aujourd|quelqu|lorsqu|puisqu|presqu|jusqu|qu|[cdjlmnst])$/iu
+function comparableToken(value: string, tokens: string[], index: number): string {
+  const isElision = /^["“”’‘']$/u.test(value) &&
+    ELISION_PREFIX.test(tokens[index - 1] ?? '') && /^\p{L}/u.test(tokens[index + 1] ?? '')
+  if (isElision) return "'"
   return value.normalize('NFC').replaceAll('œ', 'oe').replaceAll('Œ', 'OE')
 }
 
@@ -56,7 +60,7 @@ export function compareTranslations(originalText: string, correctedText: string)
   )
   for (let i = originalTokens.length - 1; i >= 0; i--) {
     for (let j = correctedTokens.length - 1; j >= 0; j--) {
-      dp[i][j] = comparableToken(originalTokens[i]) === comparableToken(correctedTokens[j])
+      dp[i][j] = comparableToken(originalTokens[i], originalTokens, i) === comparableToken(correctedTokens[j], correctedTokens, j)
         ? dp[i + 1][j + 1] + 1
         : Math.max(dp[i + 1][j], dp[i][j + 1])
     }
@@ -76,7 +80,7 @@ export function compareTranslations(originalText: string, correctedText: string)
 
   while (i < originalTokens.length || j < correctedTokens.length) {
     if (i < originalTokens.length && j < correctedTokens.length &&
-        comparableToken(originalTokens[i]) === comparableToken(correctedTokens[j])) {
+        comparableToken(originalTokens[i], originalTokens, i) === comparableToken(correctedTokens[j], correctedTokens, j)) {
       flush()
       push(original, 'unchanged', originalTokens[i])
       push(corrected, 'unchanged', correctedTokens[j])

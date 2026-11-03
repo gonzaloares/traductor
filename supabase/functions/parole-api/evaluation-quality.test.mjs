@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { EVALUATOR_PROMPT, ENGLISH_EVALUATOR_PROMPT, preserveMeaningInAlternative, protectDativeDislocation, correctUnchangedMinorEvaluation, reconcileEvaluation } from './evaluation-quality.ts'
+import { EVALUATOR_PROMPT, ENGLISH_EVALUATOR_PROMPT, preserveMeaningInAlternative, protectDativeDislocation, correctUnchangedMinorEvaluation, normalizeFrenchKeyboardTypography, reconcileEvaluation } from './evaluation-quality.ts'
 
 test('the grader must produce grammatical, faithful corrections and avoid false stylistic claims', () => {
   assert.match(EVALUATOR_PROMPT, /"corrected_sentence"/)
@@ -108,4 +108,48 @@ test('the specific dative-dislocation rule retains its punctuation requirement',
   assert.equal(result.status, 'minor_errors')
   assert.equal(result.score, 95)
   assert.match(result.corrected_sentence, /clés, à ma sœur/)
+})
+
+test('the exact user example is perfect despite keyboard punctuation', () => {
+  const written = 'Elle n"est pas ma soeur.'
+  const corrected = "Elle n'est pas ma sœur."
+  assert.equal(normalizeFrenchKeyboardTypography(written), "Elle n'est pas ma soeur.")
+  const result = correctUnchangedMinorEvaluation(written, {
+    status: 'minor_errors', score: 90, corrected_sentence: corrected,
+    grammar_explanation_es: 'Typographie', orthography_errors: [{ written: 'soeur', correct: 'sœur', meaning_es: 'hermana' }]
+  })
+  assert.equal(result.status, 'perfect')
+  assert.equal(result.score, 100)
+  assert.deepEqual(result.orthography_errors, [])
+  assert.match(result.grammar_explanation_es, /sin penalización/)
+})
+
+test('accepts all apostrophe keyboard variants but does not hide grammatical errors', () => {
+  for (const written of ["C’est ma sœur.", "C'est ma soeur.", 'C"est ma soeur.']) {
+    const result = correctUnchangedMinorEvaluation(written, {
+      status: 'minor_errors', score: 90, corrected_sentence: "C'est ma sœur.",
+      grammar_explanation_es: 'Typographie'
+    })
+    assert.equal(result.score, 100)
+  }
+  const mismatch = correctUnchangedMinorEvaluation('Elle n"est pas mon soeur.', {
+    status: 'minor_errors', score: 90, corrected_sentence: "Elle n'est pas ma sœur.",
+    grammar_explanation_es: 'Accord'
+  })
+  assert.equal(mismatch.status, 'minor_errors')
+  assert.equal(mismatch.score, 90)
+})
+
+test('quotation marks are not elisions, and English is unaffected', () => {
+  assert.equal(normalizeFrenchKeyboardTypography('Il a dit "bonjour".'), 'Il a dit "bonjour".')
+  const quote = correctUnchangedMinorEvaluation('Il a dit "bonjour".', {
+    status: 'minor_errors', score: 90, corrected_sentence: "Il a dit 'bonjour'.",
+    grammar_explanation_es: 'Typographie'
+  })
+  assert.equal(quote.score, 90)
+  const english = correctUnchangedMinorEvaluation('My sister is here', {
+    status: 'minor_errors', score: 90, corrected_sentence: 'My sister is here.',
+    grammar_explanation_es: 'Punctuation'
+  }, 'en')
+  assert.equal(english.status, 'minor_errors')
 })
