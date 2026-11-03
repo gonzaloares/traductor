@@ -21,6 +21,8 @@ Prioridades innegociables:
 8) Diferencia entre preferencia de estilo y error real: si el alumno usa una construcción gramatical aceptada, aunque marcada en lengua hablada, no la rebajes a «incorrect»; si solo falta una coma, usa minor_errors y nota 90-99, siempre que el significado esté íntegro.
 6) La sustitución de teclado "oe" por la ligadura "œ" (coeur/cœur, soeur/sœur, oeuf/œuf, oeuvre/œuvre) se acepta sin penalización. En la corrección puede mostrarse "œ". Respeta también las grafías permitidas por las rectificaciones de 1990 (p. ej. "parait" / "paraît"); NO penalices alternativas ortográficas normativas.
 
+9) No penalices diferencias de teclado entre apóstrofo recto (') y tipográfico (’), ni comillas dobles usadas dentro de elisiones reconocibles (n"est, j"ai, c"est, qu"il). Son variantes tipográficas, no errores gramaticales ni ortográficos, y nunca se incluyen en orthography_errors. Las comillas que delimitan una cita NO son apóstrofos. Si el resto está correcto: perfect y 100/100.
+
 Antes de emitir el JSON, verifica DENTRO DE ESTA MISMA RESPUESTA, sin solicitar más llamadas: a) que las dos frases francesas son gramaticales e idiomáticas; b) que el significado coincide exactamente con el español; c) que la explicación describe errores presentes y no inventa fallos; d) que status, score y orthography_errors concuerdan. Explica con sencillez en A1 y suficiente detalle en C1/C2; no añadas discursos largos.`
 
 // Pure, deliberately narrow post-processing: an alternative that only adds
@@ -71,21 +73,37 @@ export function protectDativeDislocation<T extends {
   }
 }
 
-// An identical proposed correction cannot justify a "minor_errors" penalty.
-// Keep this comparison strict: punctuation, case and accents remain significant.
+// Only normalise French elisions, not actual opening/closing quotation marks.
+// Leave the original student answer untouched for display and history.
+export function normalizeFrenchKeyboardTypography(value: string): string {
+  return value.normalize('NFC')
+    .replace(/\b(aujourd|quelqu|lorsqu|puisqu|presqu|jusqu|qu|[cdjlmnst])["“”’‘](?=\p{L})/giu, "$1'")
+}
+
+// An unchanged correction after permitted keyboard equivalents is a perfect answer.
+// Genuine punctuation, capitalization, accents, and grammatical differences still count.
 export function correctUnchangedMinorEvaluation<T extends {
   status: 'perfect' | 'minor_errors' | 'incorrect'; score: number;
   corrected_sentence: string; grammar_explanation_es: string;
   orthography_errors?: unknown
-}>(userAnswer: string, evaluation: T): T {
+}>(userAnswer: string, evaluation: T, language: 'fr' | 'en' = 'fr'): T {
   if (evaluation.status !== 'minor_errors') return evaluation
-  const normalize = (text: string) => text.normalize('NFC').replace(/\s+/g, ' ').trim()
+  const normalize = (text: string) => {
+    const canonical = language === 'fr'
+      ? normalizeFrenchKeyboardTypography(text).replace(/œ/g, 'oe').replace(/Œ/g, 'OE')
+      : text.normalize('NFC')
+    return canonical.replace(/\s+/g, ' ').trim()
+  }
   if (normalize(userAnswer) !== normalize(evaluation.corrected_sentence)) return evaluation
+  const keyboardVariant = userAnswer.normalize('NFC').replace(/\s+/g, ' ').trim() !==
+    evaluation.corrected_sentence.normalize('NFC').replace(/\s+/g, ' ').trim()
   return {
     ...evaluation,
     status: 'perfect',
     score: 100,
-    grammar_explanation_es: 'Tu traducción es correcta. No hay errores que corregir.',
+    grammar_explanation_es: keyboardVariant && language === 'fr'
+      ? 'Tu traducción es correcta. Se han aceptado las variantes de teclado (apóstrofo y/o oe/œ) sin penalización. No hay errores gramaticales.'
+      : 'Tu traducción es correcta. No hay errores que corregir.',
     orthography_errors: []
   }
 }
