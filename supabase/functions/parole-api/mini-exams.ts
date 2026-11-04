@@ -1,10 +1,12 @@
+import { validListeningTurns, listeningScript, voiceForTurn, sameSpokenText, legacyListeningTurns, type ListeningTurn } from './exam-audio.ts'
+
 type Level = 'A1'|'A2'|'B1'|'B2'|'C1'|'C2'
 type Language = 'fr' | 'en'
 type ExamMode = 'quick' | 'extended'
 type Question = { prompt: string; options: string[]; correct_index: number }
 type Paper = {
   mode?: ExamMode;
-  listening: { script: string; questions: Question[] };
+  listening: { script: string; turns?: ListeningTurn[]; questions: Question[] };
   reading: { passage: string; questions: Question[] };
   writing_prompt: string; speaking_prompt: string
 }
@@ -29,20 +31,23 @@ function generationPrompt(language: Language, mode: ExamMode): string {
     ? 'Evaluación AMPLIADA: las seis preguntas de cada texto deben cubrir ideas principales, detalles e inferencias, sin redundancia. Solicita un texto escrito de 130–180 palabras para A1–B2, o 220–300 para C1–C2, adaptando la exigencia al nivel. La tarea oral debe permitir una exposición de 2–2,5 minutos. Tiempo total orientativo 35 minutos A1–B2 o 45 minutos C1–C2.'
     : 'Evaluación BREVE: dos preguntas por cada texto y consignas realizables en 15 minutos A1–B2 o 20 minutos C1–C2.'
   return `Genera una prueba ORIGINAL de ${target} para el nivel MCER indicado, inspirada en las cuatro competencias de ${framework}. Devuelve SOLO un objeto JSON con esta estructura y exactamente ${count} preguntas en cada bloque:
-{"listening":{"script":"texto para escuchar","questions":[${examples}]},"reading":{"passage":"texto para leer","questions":[${examples}]},"writing_prompt":"consigna completa","speaking_prompt":"consigna completa"}.
-Los textos script y passage serán distintos, naturales y enteramente en ${target}, con ${words} cada uno. El script será una conversación, anécdota o anuncio, no las preguntas. Cada pregunta tendrá cuatro respuestas plausibles, distintas y una única correcta (índice 0–3); distribuye sus posiciones y escribe preguntas y opciones en ${target}. Las consignas de expresión escrita y oral deben ser diferentes, completas y en ${target}: A1–A2 vida diaria, B1–B2 relato, opinión e hipótesis, C1–C2 síntesis y argumentación matizada. ${guidance} No copies exámenes oficiales, no des pistas en los enunciados, no incluyas respuestas correctas fuera de correct_index y evita ambigüedades. ${language === 'en' ? 'Usa inglés británico como referencia y admite variantes americanas válidas.' : ''}`
+{"listening":{"turns":[{"speaker":"Camille","gender":"female","emotion":"happy","text":"Bonjour ! Quel plaisir de te voir !"},{"speaker":"Paul","gender":"male","emotion":"surprised","text":"Oh, tu es déjà arrivée ?"}],"questions":[${examples}]},"reading":{"passage":"texto para leer","questions":[${examples}]},"writing_prompt":"consigna completa","speaking_prompt":"consigna completa"}.
+El conjunto de los textos de listening.turns y reading.passage tendrá cada uno ${words}, en ${target}; serán distintos, naturales y coherentes. La lista listening.turns ES la transcripción completa del audio; NO incluyas el campo script. Crea entre 3 y ${mode === 'extended' ? 20 : 10} intervenciones, cada una de hasta 900 caracteres, usando 1 a 4 personajes adultos identificados por nombre (o Narrateur/Narrator para un monólogo). Si es conversación, alterna personas de manera realista. Cada speaker mantiene SIEMPRE el mismo gender (female o male). Para personajes del mismo género usa nombres distintos. Especifica emotion en cada intervención, eligiendo EXCLUSIVAMENTE neutral, happy, sad, worried, angry, excited, surprised o calm. Las emociones deben seguir el contenido y cambiar según el desarrollo, sin exageraciones arbitrarias. Escribe solo las palabras que el personaje pronuncia dentro de text, sin acotaciones ni nombres de hablantes. No pongas símbolos extra como [happy]. El audio puede ser conversación, anécdota o anuncio, pero nunca las preguntas. Cada pregunta tendrá cuatro respuestas plausibles, distintas y una única correcta (índice 0–3); distribuye sus posiciones y escribe preguntas y opciones en ${target}. Las consignas de expresión escrita y oral deben ser diferentes, completas y en ${target}: A1–A2 vida diaria, B1–B2 relato, opinión e hipótesis, C1–C2 síntesis y argumentación matizada. ${guidance} No copies exámenes oficiales, no des pistas en los enunciados, no incluyas respuestas correctas fuera de correct_index y evita ambigüedades. ${language === 'en' ? 'Usa inglés británico como referencia y admite variantes americanas válidas.' : ''}`
 }
 
-function validPaper(v: unknown, count: number): v is Paper {
+type GeneratedPaper = Omit<Paper, 'listening'> & { listening: { turns: ListeningTurn[]; questions: Question[] } }
+function validPaper(v: unknown, count: number): v is GeneratedPaper {
   if (!v || typeof v !== 'object' || Array.isArray(v)) return false
   const p = v as Record<string, unknown>
   if (typeof p.writing_prompt !== 'string' || p.writing_prompt.length < 12 || p.writing_prompt.length > 700 ||
       typeof p.speaking_prompt !== 'string' || p.speaking_prompt.length < 12 || p.speaking_prompt.length > 700) return false
+  const listening = p.listening as Record<string, unknown> | undefined
+  if (!listening || !validListeningTurns(listening.turns)) return false
   for (const area of ['listening','reading'] as const) {
     const item = p[area] as Record<string, unknown> | undefined
-    const paragraph = item?.[area === 'listening' ? 'script' : 'passage']
-    if (!item || typeof paragraph !== 'string' || paragraph.length < 100 ||
-        paragraph.length > 5000 || !Array.isArray(item.questions) || item.questions.length !== count) return false
+    if (!item || !Array.isArray(item.questions) || item.questions.length !== count) return false
+    if (area === 'reading' &&
+        (typeof item.passage !== 'string' || item.passage.length < 100 || item.passage.length > 5000)) return false
     for (const q of item.questions) {
       if (!q || typeof q.prompt !== 'string' || q.prompt.length < 5 || q.prompt.length > 500 ||
           !Array.isArray(q.options) || q.options.length !== 4 ||
@@ -53,6 +58,7 @@ function validPaper(v: unknown, count: number): v is Paper {
   }
   return true
 }
+
 function publicPaper(row: Row) {
   const questions = (items: Question[]) => items.map(q => ({ prompt: q.prompt, options: q.options }))
   return {
@@ -74,7 +80,7 @@ export function createMiniExams(db: Database, openAI: AI, apiKey: () => string) 
     const mode: ExamMode = body.mode === 'extended' ? 'extended' : 'quick'
     const generated = await openAI(generationPrompt(language, mode), { level, mode }, 0.7, mode === 'extended' ? 7000 : 3500)
     if (!validPaper(generated, mode === 'extended' ? 6 : 2)) throw new Error('El examen generado no tiene un formato válido')
-    const paper: Paper = { ...(generated as Paper), mode }
+    const paper: Paper = { ...generated, mode, listening: { ...generated.listening, script: listeningScript(generated.listening.turns) } }
     const inserted = await db('mini_exams?select=*', {
       method: 'POST', headers: { Prefer: 'return=representation' },
       body: JSON.stringify({ level, language, duration_minutes: mode === 'extended' ? (level === 'C1' || level === 'C2' ? 45 : 35) : (level === 'C1' || level === 'C2' ? 20 : 15), paper })
@@ -82,6 +88,59 @@ export function createMiniExams(db: Database, openAI: AI, apiKey: () => string) 
     if (!Array.isArray(inserted) || inserted.length !== 1) throw new Error('No se ha podido guardar el examen')
     return { exam: publicPaper(inserted[0] as Row) }
   }
+  async function listeningTurns(examId: unknown): Promise<{ exam: Row; turns: ListeningTurn[] } | { error: string; statusCode: number }> {
+    if (typeof examId !== 'string' || !uuid.test(examId))
+      return { error: 'Identificador de examen inválido.', statusCode: 400 }
+    const rows = await db('mini_exams?select=*&id=eq.' + encodeURIComponent(examId) + '&limit=1')
+    if (!Array.isArray(rows) || rows.length !== 1)
+      return { error: 'Examen no encontrado.', statusCode: 404 }
+    const exam = rows[0] as Row
+    if (exam.state !== 'active') return { error: 'El examen ya no está activo.', statusCode: 409 }
+    if (validListeningTurns(exam.paper.listening.turns))
+      return { exam, turns: exam.paper.listening.turns }
+
+    // Older exams have only a free-form transcript. Enrich it once, preserving
+    // every word in the original script, before preparing character voices.
+    const script = exam.paper.listening.script
+    const generated = await openAI(
+      'You are a strict listening-exam transcript annotator. Return ONLY JSON with "turns": [{ "speaker": "name", "gender": "female or male", "emotion": "neutral|happy|sad|worried|angry|excited|surprised|calm", "text": "exact original speech" }]. Use 1–4 adults, stable genders per speaker, contextual emotions. Separate turns by actual speakers when the script labels them. Do NOT translate, edit, paraphrase, omit, invent, or reorder ANY spoken word, punctuation or sentence. Exclude speaker-name prefixes from text. Keep segments under 900 characters and at most 24 turns. The output must have identical words to the transcript, apart from speaker labels and whitespace.',
+      { script, language: exam.language }, 0, 4200)
+    const candidate = generated.turns
+    const turns = validListeningTurns(candidate) && sameSpokenText(script, candidate)
+      ? candidate : legacyListeningTurns(script, exam.language)
+    if (!validListeningTurns(turns)) {
+      return { error: 'No se ha podido preparar el texto del audio. Reinicia el examen.', statusCode: 422 }
+    }
+    // Preserve the rest of the paper, answers and evaluation information.
+    await db('mini_exams?id=eq.' + encodeURIComponent(exam.id) + '&state=eq.active', {
+      method: 'PATCH',
+      body: JSON.stringify({ paper: { ...exam.paper, listening: { ...exam.paper.listening, turns } } })
+    })
+    return { exam, turns }
+  }
+  async function audioPlan(body: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const prepared = await listeningTurns(body.examId)
+    if ('error' in prepared) return prepared
+    return { segments: prepared.turns.length, speakers: new Set(prepared.turns.map(t => t.speaker)).size }
+  }
+  async function audioSegment(body: Record<string, unknown>): Promise<
+    { text: string; locale: 'fr-FR' | 'en-GB'; voice: string; gender: 'male' | 'female'; emotion: ListeningTurn['emotion'] }
+    | { error: string; statusCode: number }> {
+    const prepared = await listeningTurns(body.examId)
+    if ('error' in prepared) return prepared
+    if (!Number.isInteger(body.index) || (body.index as number) < 0 || (body.index as number) >= prepared.turns.length)
+      return { error: 'Segmento de audio no válido.', statusCode: 400 }
+    const index = body.index as number
+    const turn = prepared.turns[index]
+    return {
+      text: turn.text,
+      locale: prepared.exam.language === 'fr' ? 'fr-FR' : 'en-GB',
+      voice: voiceForTurn(prepared.turns, index),
+      gender: turn.gender,
+      emotion: turn.emotion
+    }
+  }
+
   async function history(language: Language = 'fr'): Promise<Record<string, unknown>> {
     const rows = await db('mini_exams?select=*&language=eq.' + language + '&order=started_at.desc&limit=50')
     if (!Array.isArray(rows)) throw new Error('No se ha podido leer el historial')
@@ -200,5 +259,5 @@ export function createMiniExams(db: Database, openAI: AI, apiKey: () => string) 
     if (!Array.isArray(updated)) throw new Error('No se pudo abandonar el examen')
     return { ok: true }
   }
-  return { start, history, finish, transcribe, abandon }
+  return { start, history, finish, transcribe, abandon, audioPlan, audioSegment }
 }
