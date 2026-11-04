@@ -538,6 +538,105 @@ async function askTeacher(body: Record<string, unknown>): Promise<Record<string,
 
 const miniExams = createMiniExams(db, openAI, () => env('OPENAI_API_KEY'))
 
+
+// Neural pronunciation: only created when the user presses Listen.
+// Each MP3 is cached privately by model, locale, voice and exact text.
+// Playback speed is applied in the browser, so it never triggers a new billable generation.
+const SPEECH_BUCKET = 'parole-audio'
+const SPEECH_MODEL = 'gpt-audio-1.5'
+async function speechAudio(request: Request, body: Record<string, unknown>): Promise<Response> {
+  const text = typeof body.text === 'string' ? body.text.trim() : ''
+  const locale = body.locale
+  const voice = body.voice
+  if (!text || text.length > 500 || !['fr-FR', 'en-GB', 'es-ES'].includes(String(locale)) ||
+      !['marin', 'cedar'].includes(String(voice))) {
+    return reply(request, { error: 'Frase, idioma o voz no válidos (máximo 500 caracteres).' }, 400)
+  }
+  const languageInstruction: Record<string, string> = {
+    'fr-FR': 'French, with a natural accent from metropolitan France',
+    'en-GB': 'English, with a natural British accent',
+    'es-ES': 'Spanish, with a natural accent from Spain'
+  }
+  const key = await crypto.subtle.digest('SHA-256',
+    encoder.encode([SPEECH_MODEL, 'pronunciation-v1', locale, voice, text].join('\u0000')))
+  const digest = Array.from(new Uint8Array(key), byte => byte.toString(16).padStart(2, '0')).join('')
+  const pathname = String(locale) + '/' + String(voice) + '/' + digest + '.mp3'
+  const objectURL = env('SUPABASE_URL') + '/storage/v1/object/' + SPEECH_BUCKET + '/' + pathname
+  const serviceKey = env('SUPABASE_SERVICE_ROLE_KEY')
+  const storageHeaders = {
+    apikey: serviceKey,
+    Authorization: 'Bearer ' + serviceKey
+  }
+  const cached = await fetch(objectURL, { headers: storageHeaders })
+  if (cached.ok) {
+    return new Response(await cached.arrayBuffer(), {
+      headers: { ...headers(request), 'Content-Type': 'audio/mpeg', 'X-Parole-Cache': 'HIT' }
+    })
+  }
+  const cacheError = await cached.text()
+  if (![400, 404].includes(cached.status) ||
+      !/not.found|NoSuchKey|does not exist/i.test(cacheError)) {
+    console.error('Speech cache read failed:', cached.status)
+    return reply(request, { error: 'La caché de audio no está disponible. No se ha generado audio de pago.' }, 503)
+  }
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      Authorization: 'Bearer ' + env('OPENAI_API_KEY'),
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      model: SPEECH_MODEL,
+      modalities: ['text', 'audio'],
+      audio: { voice, format: 'mp3' },
+      store: false,
+      messages: [
+        {
+          role: 'system',
+          content: 'You are a language-learning pronunciation reader. Produce ONLY speech for the exact text the user supplies. Repeat every word faithfully. Do not translate, rephrase, correct, explain, announce, or add any words. Speak clearly with natural connected speech and accurate pronunciation in ' + languageInstruction[String(locale)] + '.'
+        },
+        { role: 'user', content: text }
+      ]
+    })
+  })
+  if (!response.ok) {
+    const errorData: unknown = await response.json().catch(() => null)
+    const providerError = errorData && typeof errorData === 'object' && 'error' in errorData
+      ? (errorData as { error?: { code?: string } }).error : null
+    console.error('Speech provider failed:', response.status, providerError?.code ?? 'unknown')
+    const message = response.status === 429 ? 'Sin saldo o límite temporal de uso de OpenAI para audio.'
+      : response.status === 401 ? 'La clave OPENAI_API_KEY no es válida o ha caducado.'
+      : response.status === 403 ? 'El proyecto de OpenAI no tiene permiso para usar el modelo de audio.'
+      : 'OpenAI ha rechazado la generación de audio (' + response.status + ').'
+    return reply(request, { error: message }, 502)
+  }
+  const result: unknown = await response.json().catch(() => null)
+  const choices = result && typeof result === 'object' && 'choices' in result
+    ? (result as { choices?: { message?: { audio?: { data?: string } } }[] }).choices
+    : null
+  const encoded = choices?.[0]?.message?.audio?.data
+  if (typeof encoded !== 'string' || !encoded) {
+    return reply(request, { error: 'El proveedor de audio no ha devuelto una grabación.' }, 502)
+  }
+  const binary = atob(encoded)
+  if (binary.length > 4194304) {
+    return reply(request, { error: 'El audio supera el tamaño permitido.' }, 502)
+  }
+  const bytes = Uint8Array.from(binary, char => char.charCodeAt(0))
+  const uploaded = await fetch(objectURL, {
+    method: 'POST',
+    headers: { ...storageHeaders, 'Content-Type': 'audio/mpeg', 'Cache-Control': '31536000', 'x-upsert': 'false' },
+    body: bytes
+  })
+  if (!uploaded.ok && uploaded.status !== 409) {
+    console.error('Speech cache upload failed:', uploaded.status)
+    // Even if Storage is temporarily unavailable, deliver the paid generation.
+  }
+  return new Response(bytes, {
+    headers: { ...headers(request), 'Content-Type': 'audio/mpeg', 'X-Parole-Cache': 'MISS' }
+  })
+}
+
 Deno.serve(async (request: Request): Promise<Response> => {
   if (!allowedOrigin(request.headers.get('origin'))) {
     return reply(request, { error: 'Origen no permitido' }, 403)
@@ -546,7 +645,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
   const params = new URL(request.url).searchParams
   const action = params.get('action')
   const language: Language = params.get('language') === 'en' ? 'en' : 'fr'
-  if (!['auth', 'sentences', 'evaluate', 'generate-batch', 'scores', 'orthography', 'orthography-review', 'orthography-status', 'teacher-chat', 'mini-exam-start', 'mini-exam-history', 'mini-exam-finish', 'mini-exam-transcribe', 'mini-exam-abandon'].includes(action ?? '')) {
+  if (!['auth', 'sentences', 'evaluate', 'generate-batch', 'scores', 'orthography', 'orthography-review', 'orthography-status', 'teacher-chat', 'speech', 'mini-exam-start', 'mini-exam-history', 'mini-exam-finish', 'mini-exam-transcribe', 'mini-exam-abandon'].includes(action ?? '')) {
     return reply(request, { error: 'Ruta no encontrada' }, 404)
   }
   try {
@@ -569,6 +668,9 @@ Deno.serve(async (request: Request): Promise<Response> => {
     }
     if (!(await validSession(request.headers.get('x-parole-session')))) {
       return reply(request, { error: 'Sesión caducada. Introduce de nuevo el PIN.' }, 401)
+    }
+    if (action === 'speech' && request.method === 'POST') {
+      return speechAudio(request, await requestJSON(request))
     }
     if (action === 'sentences' && request.method === 'GET') {
       return reply(request, { sentences: await getSentences(language) })
