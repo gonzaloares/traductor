@@ -73,6 +73,19 @@ export function sameSpokenText(script: string, turns: ListeningTurn[]): boolean 
   return cleanScript(script) === turns.map(turn => turn.text.replace(/\s+/g, '').toLowerCase()).join('')
 }
 
+function splitLongTurn(turn: ListeningTurn): ListeningTurn[] {
+  const pieces: ListeningTurn[] = []
+  let remaining = turn.text.trim()
+  while (remaining.length > 800) {
+    const candidate = remaining.lastIndexOf(' ', 800)
+    const cut = candidate >= 450 ? candidate : 800
+    pieces.push({ ...turn, text: remaining.slice(0, cut).trim() })
+    remaining = remaining.slice(cut).trim()
+  }
+  if (remaining) pieces.push({ ...turn, text: remaining })
+  return pieces
+}
+
 export function legacyListeningTurns(script: string, language: 'fr' | 'en'): ListeningTurn[] {
   const result: ListeningTurn[] = []
   const female = /^(madame|mme|mademoiselle|miss|mrs|ms|claire|marie|sophie|anna|anne|sarah|julie|emma|lucie|alice|élise|elise|camille)$/i
@@ -99,10 +112,15 @@ export function legacyListeningTurns(script: string, language: 'fr' | 'en'): Lis
     }
     result.push({ speaker, gender: speakers.get(key)!, emotion: 'neutral', text: match[2] })
   }
-  if (!result.length || !validListeningTurns(result) || !sameSpokenText(script, result)) {
-    // Last-resort voice for an unstructured historic passage, not fabricated dialogue.
-    return [{ speaker: language === 'fr' ? 'Narrateur' : 'Narrator', gender: 'female',
-      emotion: 'neutral', text: script.slice(0, 5000) }]
+  const normalized = result.flatMap(splitLongTurn)
+  if (normalized.length && validListeningTurns(normalized) && sameSpokenText(script, normalized)) {
+    return normalized
   }
-  return result
+  // Last resort for an old unstructured story. Split it into safe-size clips,
+  // rather than failing synthesis for texts longer than 900 characters.
+  const monologue = splitLongTurn({
+    speaker: language === 'fr' ? 'Narrateur' : 'Narrator',
+    gender: 'female', emotion: 'neutral', text: script.slice(0, 5000)
+  })
+  return monologue
 }
