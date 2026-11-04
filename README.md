@@ -20,6 +20,14 @@ Para crear los iconos (PNG 192/512, variante maskable y Apple 180), el build eje
 
 ---
 
+## Voz neuronal para aprender pronunciación
+
+Los botones **Escuchar** utilizan por defecto una voz neuronal generada con IA (OpenAI `gpt-audio-1.5`) para francés de Francia, inglés británico y español de España. La opción **Audio** de la cabecera permite alternar entre una voz femenina (`marin`) y otra masculina (`cedar`), elegir velocidades 0,75×, 1× y 1,25×, o volver al sintetizador gratuito del dispositivo. La interfaz indica que la voz es artificial.
+
+**Control del gasto:** nunca se genera audio automáticamente. La primera pulsación para una frase y una voz genera un MP3 de pago; se guarda en el bucket privado `parole-audio` de Supabase Storage y puede reproducirse posteriormente sin otra solicitud a OpenAI. Se usa una clave SHA-256 derivada de modelo, idioma, voz y texto exacto; la velocidad de escucha solo modifica la reproducción, sin crear otro archivo. Hay una caché adicional temporal en el navegador. El almacenamiento no está expuesto públicamente: solo el endpoint `POST ?action=speech` con sesión PIN firmada puede leer o generar un archivo. Se limita cada frase a 500 caracteres. Si falla la voz neuronal, el navegador ofrece su sintetizador gratuito de respaldo.
+
+El audio neuronal requiere Internet la primera vez; repetirlo desde otro dispositivo utiliza el MP3 almacenado en Supabase. El gasto de generación y el almacenamiento de archivos dependen de los límites de tus proyectos OpenAI y Supabase respectivamente. El modelo de audio se ha separado del modelo de corrección para facilitar futuras actualizaciones.
+
 ## Dónde se ejecuta
 
 - **Interfaz web:** [GitHub Pages](https://gonzaloares.github.io/traductor/), desplegada desde `main` usando `.github/workflows/pages.yml` (exportación estática Next.js).
