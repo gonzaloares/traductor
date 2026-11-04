@@ -21,6 +21,30 @@ const DEFAULT_PREFERENCES: AudioPreferences = { mode: 'neural', voice: 'female',
 const generatedUrls = new Map<string, string>()
 let currentPlayer: HTMLAudioElement | null = null
 let currentRequest: AbortController | null = null
+let audioContext: AudioContext | null = null
+let webAudioSource: AudioBufferSourceNode | null = null
+
+function unlockWebAudio(): void {
+  // Safari can reject audio.play() when a network request has elapsed since
+  // the tap. Unlock an AudioContext synchronously inside the original tap.
+  if (typeof AudioContext === 'undefined') return
+  if (!audioContext || audioContext.state === 'closed') audioContext = new AudioContext()
+  if (audioContext.state !== 'running') void audioContext.resume().catch(() => {})
+}
+
+async function webAudioFallback(url: string, speed: number): Promise<void> {
+  if (!audioContext) throw new Error('El audio no está disponible')
+  if (audioContext.state !== 'running') await audioContext.resume()
+  const response = await fetch(url)
+  const buffer = await audioContext.decodeAudioData(await response.arrayBuffer())
+  const source = audioContext.createBufferSource()
+  source.buffer = buffer
+  source.playbackRate.value = speed
+  source.connect(audioContext.destination)
+  webAudioSource = source
+  source.onended = () => { if (webAudioSource === source) webAudioSource = null }
+  source.start(0)
+}
 
 function preferences(): AudioPreferences {
   if (typeof window === 'undefined') return DEFAULT_PREFERENCES
@@ -44,6 +68,10 @@ function stopAudio(): void {
   if (currentPlayer) {
     currentPlayer.pause()
     currentPlayer = null
+  }
+  if (webAudioSource) {
+    try { webAudioSource.stop() } catch { /* Already stopped. */ }
+    webAudioSource = null
   }
   if (typeof window !== 'undefined') window.speechSynthesis?.cancel()
 }
@@ -123,6 +151,8 @@ export function SpeakButton({ text, lang = 'fr-FR', label = 'Escuchar en francé
       deviceSpeech(text, lang, config.speed)
       return
     }
+    // Required inside the button's original gesture for iPad/iPhone Safari.
+    unlockWebAudio()
     const controller = new AbortController()
     currentRequest = controller
     setBusy(true)
@@ -135,7 +165,16 @@ export function SpeakButton({ text, lang = 'fr-FR', label = 'Escuchar en francé
       player.playbackRate = config.speed
       player.preservesPitch = true
       player.onended = () => { if (currentPlayer === player) currentPlayer = null }
-      await player.play()
+      try {
+        await player.play()
+      } catch (error) {
+        if (!(error instanceof DOMException) || error.name !== 'NotAllowedError') throw error
+        // A network wait may lose the original user activation on Safari.
+        // The unlocked AudioContext can reproduce the cached file without
+        // asking for another OpenAI generation.
+        currentPlayer = null
+        await webAudioFallback(url, config.speed)
+      }
     } catch (error) {
       if (!controller.signal.aborted) {
         const reason = error instanceof Error ? error.message : 'Error desconocido'
