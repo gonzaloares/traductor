@@ -5,6 +5,7 @@ import { ArrowLeft, ArrowRight, BookOpen, CheckCircle2, Clock3, GraduationCap, H
   Loader2, Mic, Pause, Play, RotateCcw, Send, Square, Volume2, XCircle } from 'lucide-react'
 import { LEVELS, type Level, type Language } from '@/lib/types'
 import { cn } from '@/lib/utils'
+import { ExamListeningAudio } from '@/components/ExamListeningAudio'
 import { assessExam, emptyExamAnswers, examDuration, examMinutes, examParts, type ExamMode,
   type ExamAnswers, type ExamHistoryResponse, type ExamPaper, type ExamResult } from '@/lib/exam-types'
 
@@ -178,18 +179,6 @@ export function MiniExam({ api, language, onExit, onFinished }: { api: API; lang
     setAnswers(previous => ({ ...previous,
       [part]: previous[part].map((item, i) => i === index ? value : item) }))
 
-  const playAudio = () => {
-    if (!paper || listenCount >= 2 || !('speechSynthesis' in window)) return
-    window.speechSynthesis.cancel()
-    const utterance = new SpeechSynthesisUtterance(paper.listening.script)
-    utterance.lang = language === 'en' ? 'en-GB' : 'fr-FR'
-    utterance.rate = paper.level === 'A1' || paper.level === 'A2' ? 0.88 : 1
-    const voices = window.speechSynthesis.getVoices()
-    utterance.voice = voices.find(v => v.lang.toLowerCase() === (language === 'en' ? 'en-gb' : 'fr-fr'))
-      ?? voices.find(v => v.lang.toLowerCase().startsWith(language)) ?? null
-    window.speechSynthesis.speak(utterance)
-    setListenCount(previous => previous + 1)
-  }
 
   const startRecording = async () => {
     if (recording || transcribing || !navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
@@ -371,11 +360,9 @@ export function MiniExam({ api, language, onExit, onFinished }: { api: API; lang
       </div>
       {step === 0 && <div className="mt-6 space-y-5">
         <p className="text-sm text-slate-600">Escucha el fragmento en {language === 'en' ? 'inglés' : 'francés'} y responde a las {paper.listening.questions.length} preguntas. Puedes reproducirlo dos veces. No se mostrará la transcripción hasta terminar.</p>
-        <button type="button" onClick={playAudio} disabled={listenCount >= 2 || !('speechSynthesis' in window)}
-          className="flex w-full items-center justify-center gap-3 rounded-xl bg-indigo-50 p-4 font-bold text-indigo-700 disabled:opacity-50">
-          <Headphones size={22}/> {listenCount < 2 ? 'Escuchar audio' : 'Dos reproducciones realizadas'}
-        </button>
-        <p className="text-center text-xs text-slate-500">Reproducciones: {listenCount}/2 · Voz {language === 'en' ? 'inglesa' : 'francesa'} del dispositivo</p>
+        <ExamListeningAudio key={paper.id} examId={paper.id} language={language} level={paper.level}
+          transcript={paper.listening.script} listens={listenCount}
+          onCompleted={() => setListenCount(previous => Math.min(previous + 1, 2))} />
         {paper.listening.questions.map((question,i) => <div key={i} className="space-y-2 border-t border-slate-100 pt-4">
           <p className="font-semibold leading-relaxed text-slate-900">{i+1}. {question.prompt}</p>
           {question.options.map((option,j) => <label key={j} className={cn('flex cursor-pointer items-start gap-3 rounded-xl border p-3 text-sm',
