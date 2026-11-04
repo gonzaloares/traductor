@@ -78,8 +78,18 @@ export function createMiniExams(db: Database, openAI: AI, apiKey: () => string) 
     if (body.mode !== undefined && body.mode !== 'quick' && body.mode !== 'extended')
       return { error: 'Modalidad de examen no válida.', statusCode: 400 }
     const mode: ExamMode = body.mode === 'extended' ? 'extended' : 'quick'
-    const generated = await openAI(generationPrompt(language, mode), { level, mode }, 0.7, mode === 'extended' ? 7000 : 3500)
-    if (!validPaper(generated, mode === 'extended' ? 6 : 2)) throw new Error('El examen generado no tiene un formato válido')
+    const expected = mode === 'extended' ? 6 : 2
+    const tokens = mode === 'extended' ? 7000 : 3500
+    let generated = await openAI(generationPrompt(language, mode), { level, mode }, 0.7, tokens)
+    if (!validPaper(generated, expected)) {
+      // A structured dialogue must be complete before it is stored. One retry
+      // protects learners from a malformed AI payload without creating an exam
+      // that cannot be spoken or marked.
+      generated = await openAI(generationPrompt(language, mode) +
+        ' IMPORTANTE: reintenta con listening.turns estructurado; los speaker, gender, emotion y text deben estar completos y las preguntas deben ser exactamente ' + expected + '.',
+        { level, mode }, 0.35, tokens)
+    }
+    if (!validPaper(generated, expected)) throw new Error('El examen generado no tiene un formato válido')
     const paper: Paper = { ...generated, mode, listening: { ...generated.listening, script: listeningScript(generated.listening.turns) } }
     const inserted = await db('mini_exams?select=*', {
       method: 'POST', headers: { Prefer: 'return=representation' },
