@@ -16,6 +16,7 @@ type Evaluation = {
   natural_alternative: string; grammar_explanation_es: string
 }
 import { createMiniExams } from './mini-exams.ts'
+import { emotionDirection, type ListeningEmotion } from './exam-audio.ts'
 import { EVALUATOR_PROMPT, ENGLISH_EVALUATOR_PROMPT, preserveMeaningInAlternative, protectDativeDislocation, correctUnchangedMinorEvaluation, normalizeFrenchKeyboardTypography, reconcileEvaluation } from './evaluation-quality.ts'
 
 const SESSION_AGE_MS = 30 * 24 * 60 * 60 * 1000
@@ -637,6 +638,93 @@ async function speechAudio(request: Request, body: Record<string, unknown>): Pro
   })
 }
 
+
+type ExamSpeechSegment = { text: string; locale: 'fr-FR' | 'en-GB'; voice: string; gender: 'female' | 'male'; emotion: ListeningEmotion }
+
+// Separate voice for every speaker, expressive delivery for each conversational
+// turn. Cached MP3s are private and usable only through an active PIN session.
+async function examSpeechAudio(request: Request, segment: ExamSpeechSegment): Promise<Response> {
+  const model = 'gpt-audio-1.5'
+  const voice = segment.voice
+  const emotion = segment.emotion
+  const text = segment.text
+  const locale = segment.locale
+  const digestBytes = await crypto.subtle.digest('SHA-256',
+    encoder.encode([model, 'exam-expressive-v1', locale, voice, segment.gender, emotion, text].join('\u0000')))
+  const digest = Array.from(new Uint8Array(digestBytes), byte => byte.toString(16).padStart(2, '0')).join('')
+  const path = 'exams/' + locale + '/' + voice + '/' + digest + '.mp3'
+  const objectURL = env('SUPABASE_URL') + '/storage/v1/object/' + SPEECH_BUCKET + '/' + path
+  const serviceKey = env('SUPABASE_SERVICE_ROLE_KEY')
+  const storageHeaders = { apikey: serviceKey, Authorization: 'Bearer ' + serviceKey }
+
+  const cached = await fetch(objectURL, { headers: storageHeaders })
+  if (cached.ok) return new Response(await cached.arrayBuffer(), {
+    headers: { ...headers(request), 'Content-Type': 'audio/mpeg', 'X-Parole-Cache': 'HIT' }
+  })
+  const cacheError = await cached.text()
+  if (![400, 404].includes(cached.status) || !/not.found|NoSuchKey|does not exist/i.test(cacheError)) {
+    console.error('Exam audio cache read failed', cached.status)
+    return reply(request, { error: 'La caché del audio del examen no está disponible.' }, 503)
+  }
+
+  const accent = locale === 'fr-FR' ? 'metropolitan French' : 'British English'
+  const voiceGender = segment.gender === 'female' ? 'an adult female-sounding speaker' : 'an adult male-sounding speaker'
+  const instruction = 'Read ONLY the exact following dialogue line in ' + accent + ', as ' + voiceGender +
+    '. Be ' + emotionDirection(emotion) +
+    '. Make emotions audible through subtle pitch, tone, tempo and intonation, without theatrical overacting. ' +
+    'Retain the same characteristic voice throughout the conversation. ' +
+    'Never say speaker names, emotion labels, stage directions, explanations or any other extra words. ' +
+    'Repeat the line faithfully without translating, paraphrasing or correcting it.'
+
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + env('OPENAI_API_KEY'), 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model,
+      modalities: ['text', 'audio'],
+      audio: { voice, format: 'mp3' },
+      store: false,
+      messages: [
+        { role: 'system', content: instruction },
+        { role: 'user', content: text }
+      ]
+    })
+  })
+  if (!response.ok) {
+    const provider: unknown = await response.json().catch(() => null)
+    const errorCode = provider && typeof provider === 'object' && 'error' in provider
+      ? (provider as { error?: { code?: string } }).error?.code : null
+    console.error('Exam speech generation failed', response.status, errorCode ?? 'unknown')
+    const message = response.status === 429 ? 'El servicio de audio ha alcanzado su cuota o límite temporal.'
+      : response.status === 401 ? 'La clave de OpenAI no es válida.'
+      : response.status === 403 ? 'El proyecto de OpenAI no tiene acceso al modelo de audio.'
+      : 'No se ha podido generar el audio del examen.'
+    return reply(request, { error: message }, 502)
+  }
+  const result: unknown = await response.json().catch(() => null)
+  const encoded = result && typeof result === 'object' && 'choices' in result
+    ? (result as { choices?: { message?: { audio?: { data?: string } } }[] }).choices?.[0]?.message?.audio?.data
+    : null
+  if (typeof encoded !== 'string' || encoded.length === 0)
+    return reply(request, { error: 'El modelo no ha devuelto audio.' }, 502)
+  const binary = atob(encoded)
+  if (!binary.length || binary.length > 4194304)
+    return reply(request, { error: 'El tamaño de audio generado no es válido.' }, 502)
+  const audio = Uint8Array.from(binary, c => c.charCodeAt(0))
+  const stored = await fetch(objectURL, {
+    method: 'POST',
+    headers: { ...storageHeaders, 'Content-Type': 'audio/mpeg', 'Cache-Control': '31536000', 'x-upsert': 'false' },
+    body: audio
+  })
+  if (!stored.ok && stored.status !== 409) {
+    console.error('Exam audio cache upload failed', stored.status)
+    // Deliver the already-generated clip; don't make the learner pay twice.
+  }
+  return new Response(audio, {
+    headers: { ...headers(request), 'Content-Type': 'audio/mpeg', 'X-Parole-Cache': 'MISS' }
+  })
+}
+
 Deno.serve(async (request: Request): Promise<Response> => {
   if (!allowedOrigin(request.headers.get('origin'))) {
     return reply(request, { error: 'Origen no permitido' }, 403)
@@ -645,7 +733,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
   const params = new URL(request.url).searchParams
   const action = params.get('action')
   const language: Language = params.get('language') === 'en' ? 'en' : 'fr'
-  if (!['auth', 'sentences', 'evaluate', 'generate-batch', 'scores', 'orthography', 'orthography-review', 'orthography-status', 'teacher-chat', 'speech', 'mini-exam-start', 'mini-exam-history', 'mini-exam-finish', 'mini-exam-transcribe', 'mini-exam-abandon'].includes(action ?? '')) {
+  if (!['auth', 'sentences', 'evaluate', 'generate-batch', 'scores', 'orthography', 'orthography-review', 'orthography-status', 'teacher-chat', 'speech', 'mini-exam-start', 'mini-exam-history', 'mini-exam-finish', 'mini-exam-transcribe', 'mini-exam-abandon', 'mini-exam-audio-plan', 'mini-exam-audio-segment'].includes(action ?? '')) {
     return reply(request, { error: 'Ruta no encontrada' }, 404)
   }
   try {
@@ -688,6 +776,15 @@ Deno.serve(async (request: Request): Promise<Response> => {
     if (action === 'orthography-status' && request.method === 'POST') {
       const result = await setOrthographyState(await requestJSON(request))
       return reply(request, result, typeof result.statusCode === 'number' ? result.statusCode : 200)
+    }
+    if (action === 'mini-exam-audio-plan' && request.method === 'POST') {
+      const plan = await miniExams.audioPlan(await requestJSON(request))
+      return reply(request, plan, typeof plan.statusCode === 'number' ? plan.statusCode : 200)
+    }
+    if (action === 'mini-exam-audio-segment' && request.method === 'POST') {
+      const clip = await miniExams.audioSegment(await requestJSON(request))
+      if ('error' in clip) return reply(request, clip, clip.statusCode)
+      return examSpeechAudio(request, clip)
     }
     if (action === 'mini-exam-history' && request.method === 'GET') return reply(request, await miniExams.history(language))
     if (action === 'mini-exam-start' && request.method === 'POST') {
