@@ -28,6 +28,19 @@ Los botones **Escuchar** utilizan por defecto una voz neuronal generada con IA (
 
 El audio neuronal requiere Internet la primera vez; repetirlo desde otro dispositivo utiliza el MP3 almacenado en Supabase. El gasto de generación y el almacenamiento de archivos dependen de los límites de tus proyectos OpenAI y Supabase respectivamente. El modelo de audio se ha separado del modelo de corrección para facilitar futuras actualizaciones.
 
+## Comprensión oral de los exámenes: voces y emociones
+
+El botón **Escuchar audio** de los mini-exámenes y las evaluaciones ampliadas ya no depende del sintetizador básico del navegador. Utiliza la voz neuronal de OpenAI mediante Supabase, con estos comportamientos:
+
+- El generador crea un guion estructurado con intervenciones, nombre de personaje, voz femenina o masculina y emoción adecuada al contexto (alegría, tristeza, preocupación, enfado, sorpresa, entusiasmo, calma o neutralidad).
+- Cada personaje conserva su voz durante el examen. Dos personajes del mismo género reciben voces distintas. La prosodia intenta reflejar su emoción, sin convertir la prueba en una representación teatral.
+- En el primer intento se generan fragmentos solo cuando se pulsa Escuchar; los siguientes se descargan anticipadamente mientras se reproduce el primero. Se guardan en el bucket privado `parole-audio`; repetir el examen no vuelve a pagar las mismas voces y frases. Las voces de los personajes son independientes del selector femenino/masculino para frases individuales.
+- La velocidad es la seleccionada en Ajustes de audio. No se muestran las intervenciones textuales al alumno antes de entregar el examen.
+- Se permiten **dos reproducciones completas**: si el servicio falla o se detiene antes del final, el intento interrumpido no consume una reproducción.
+- Los exámenes anteriores que solo tenían guion de texto se convierten en intervenciones a demanda al intentar reproducirlos. En esos exámenes antiguos, si no se identifica con seguridad a los personajes, se prioriza preservar el texto original y reproducirlo sin inventar personajes.
+
+El audio es generado artificialmente y requiere conexión para obtener los archivos (se reusan después desde las cachés). Las indicaciones emocionales son aproximaciones expresivas, no una garantía de que el motor interprete perfectamente cada matiz. Cada voz/fragmento diferente puede generar un coste API inicial; la caché reduce el coste de las repeticiones. La nota de comprensión oral se mantiene basada en las respuestas a las preguntas.
+
 ## Dónde se ejecuta
 
 - **Interfaz web:** [GitHub Pages](https://gonzaloares.github.io/traductor/), desplegada desde `main` usando `.github/workflows/pages.yml` (exportación estática Next.js).
