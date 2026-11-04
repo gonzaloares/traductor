@@ -188,7 +188,7 @@ export function SpeakButton({ text, lang = 'fr-FR', label = 'Escuchar en francé
   }
 
   return <span className="relative inline-flex shrink-0 items-center">
-    <button type="button" onClick={() => void speak()} title={warning || label} aria-label={warning || (label + ': ' + text)}
+    <button type="button" disabled={busy} onClick={() => void speak()} title={warning || label} aria-label={warning || (label + ': ' + text)}
       className={warning
         ? 'inline-flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-700 hover:bg-amber-100'
         : 'inline-flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 transition hover:bg-indigo-100'}>
