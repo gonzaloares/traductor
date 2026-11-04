@@ -13,6 +13,7 @@ import { LEVELS, type EvaluationResponse, type Level, type Language, type Senten
 import { compareTranslations, type DiffPart } from '@/lib/translation-diff'
 import { ALL_GRAMMAR_TOPICS, CUSTOM_GRAMMAR_TOPIC, topicsForLevel, selectedGrammarTopic } from '@/lib/grammar-topics'
 import { MiniExam, ExamHistory } from '@/components/MiniExam'
+import { SpeakButton, AudioSettingsControl } from '@/components/Speech'
 
 type View = 'home' | 'practice' | 'review' | 'bank' | 'progress' | 'exam'
 type Filter = Level | 'Todos'
@@ -108,25 +109,6 @@ function Mastery({ score, showLabel = false }: { score: number; showLabel?: bool
         i < score ? 'bg-indigo-500' : 'bg-slate-200')} />)}</div>
     {showLabel && <span className="text-xs font-semibold text-slate-500 tabular">{score}/5</span>}
   </div>
-}
-function SpeakButton({ text, lang = 'fr-FR', label = 'Escuchar en francés' }: { text: string; lang?: string; label?: string }) {
-  const speak = () => {
-    if (!('speechSynthesis' in window)) return
-    const synth = window.speechSynthesis
-    synth.cancel()
-    const utterance = new SpeechSynthesisUtterance(text)
-    utterance.lang = lang
-    utterance.rate = 0.88
-    const language = lang.toLowerCase()
-    const voice = synth.getVoices().find(v => v.lang.toLowerCase() === language)
-      ?? synth.getVoices().find(v => v.lang.toLowerCase().startsWith(language.slice(0, 2)))
-    if (voice) utterance.voice = voice
-    synth.speak(utterance)
-  }
-  return <button type="button" onClick={speak} title={label} aria-label={label + ': ' + text}
-    className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 transition hover:bg-indigo-100">
-    <Volume2 size={19} />
-  </button>
 }
 function ComparisonText({ parts, side }: { parts: DiffPart[]; side: 'original' | 'corrected' }) {
   return <span className="whitespace-pre-wrap break-words">
@@ -867,6 +849,8 @@ export default function Page() {
         <div><div className="text-[19px] font-extrabold tracking-tight text-slate-900 sm:text-[22px]">parole<span className="text-indigo-600">.</span></div>
           <p className="hidden text-[11px] font-medium tracking-wide text-slate-500 sm:block">{language === 'en' ? 'INGLÉS' : 'FRANCÉS'} ACTIVO · A1—C2</p></div>
       </div>
+      <div className="flex shrink-0 items-center gap-2">
+        <AudioSettingsControl />
       {view === 'exam' ? <span className="text-sm font-bold text-indigo-700">Mini-examen</span> : view === 'practice' ? <button type="button" onClick={() => void load()} disabled={loading} aria-label="Sincronizar" title="Sincronizar con la nube"
           className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500">
           <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
@@ -874,6 +858,7 @@ export default function Page() {
         className="flex shrink-0 items-center gap-1.5 rounded-xl bg-indigo-600 px-3 py-2.5 text-xs font-bold text-white shadow-lg shadow-indigo-100 transition hover:bg-indigo-700 sm:gap-2 sm:px-5 sm:py-3 sm:text-sm">
         <Sparkles size={17} /> <span className="hidden sm:inline">Generar nuevas frases con IA</span><span className="sm:hidden">Generar con IA</span>
       </button>}
+      </div>
     </header>
 
     <div className="mt-3 flex items-center justify-between gap-2 rounded-2xl border border-slate-200 bg-white p-2 sm:mt-5" role="group" aria-label="Idioma de aprendizaje">
